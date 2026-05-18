@@ -1,4 +1,4 @@
-import { PublicKey, Keypair, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, Transaction, VersionedTransaction } from "@solana/web3.js";
 import BN from "bn.js";
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
 import { getConnection, walletToKeypair, type Cluster } from "./web3-compat-boundary";
@@ -30,7 +30,8 @@ export interface BinData {
 export async function getUserPositions(
   poolAddress: string,
   walletPublicKey: string,
-  cluster: Cluster = "mainnet-beta"
+  cluster: Cluster = "mainnet-beta",
+  rpcUrl?: string
 ): Promise<{
   userPositions: PositionInfo[];
   activeBinId: number;
@@ -38,7 +39,7 @@ export async function getUserPositions(
   tokenXDecimals: number;
   tokenYDecimals: number;
 }> {
-  const connection = getConnection(cluster);
+  const connection = rpcUrl ? new Connection(rpcUrl, "confirmed") : getConnection(cluster);
   const pool = await DLMM.create(connection, new PublicKey(poolAddress));
   const activeBin = await pool.getActiveBin();
   const { userPositions } = await pool.getPositionsByUserAndLbPair(new PublicKey(walletPublicKey));

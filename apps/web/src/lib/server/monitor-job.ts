@@ -24,6 +24,14 @@ const state: ServerMonitorState = {
 const MAX_HISTORY = 50;
 let pollTimer: NodeJS.Timeout | null = null;
 
+function getIntervalMs(): number {
+  const entries = getAll();
+  if (entries.length === 0) return 60_000;
+  const min = Math.min(...entries.map(e => e.settings.intervalSeconds));
+  // Clamp between 60s and 15min — don't let settings push below 60s
+  return Math.max(60_000, Math.min(min * 1000, 900_000));
+}
+
 export function getState(): ServerMonitorState {
   return { ...state, health: [...state.health], history: [...state.history] };
 }
@@ -44,7 +52,7 @@ async function runCheck() {
       await Promise.allSettled(
         entry.poolAddresses.map(async (poolAddr) => {
           try {
-            const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, entry.publicKey);
+            const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, entry.publicKey, "mainnet-beta", entry.rpcUrl);
             for (const pos of userPositions) {
               const h = computePositionHealth(pos, activeBinId, entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8), {
                 pricePerToken: activeBinPricePerToken,
@@ -94,8 +102,8 @@ async function runCheck() {
               };
               state.history = [record, ...state.history].slice(0, MAX_HISTORY);
             }
-          } catch {
-            // Per-pool errors don't abort the whole check
+          } catch (e) {
+            console.error(`[diver] runCheck failed for pool ${poolAddr}:`, e instanceof Error ? e.message : e);
           }
         })
       );
@@ -110,22 +118,25 @@ async function runCheck() {
   }
 }
 
+function scheduleNext() {
+  pollTimer = setTimeout(async () => {
+    const entries = getAll();
+    if (entries.length > 0) await runCheck();
+    scheduleNext();
+  }, getIntervalMs());
+  if (pollTimer.unref) pollTimer.unref();
+}
+
 export function startServerMonitor() {
   if (pollTimer) return;
-  // Run immediately, then schedule based on shortest interval among unlocked wallets
   runCheck();
-  pollTimer = setInterval(() => {
-    const entries = getAll();
-    if (entries.length === 0) return;
-    runCheck();
-  }, 30_000); // Check every 30s; actual rebalance gated by per-wallet settings
-  if (pollTimer.unref) pollTimer.unref();
+  scheduleNext();
   console.log("[diver] Server monitor started");
 }
 
 export function stopServerMonitor() {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
 }

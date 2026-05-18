@@ -15,7 +15,7 @@ Self-hosted Solana wallet manager and Meteora DLMM liquidity position tool.
 - **Position discovery** — Connects to the LP Agent API to auto-discover all open DLMM positions for your wallet. No need to manually track pool addresses. Configure your API key in Settings → Integrations. Respects the 5 RPM rate limit with a 60-second cooldown between fetches.
 - **Bin range presets** — New position dialog uses percentage-based range presets (±10%, ±25%, ±50%, ±100%) relative to the pool's bin step, so ranges are meaningful across different pools.
 - **Browser monitor** — Polls positions on a configurable interval while the tab is open. Shows range health and edge proximity.
-- **Server monitor** — Runs in the Next.js server process — continues monitoring and auto-rebalancing even when you navigate away or close the tab. Key is decrypted client-side; only the seed is sent to the server over HTTPS.
+- **Server monitor** — Runs in the Next.js server process — continues monitoring and auto-rebalancing even when you navigate away or close the tab. Key is decrypted client-side; only the seed is sent to the server over HTTPS. Uses your configured RPC URL (not just the default public endpoint).
 - **Auto-rebalance** — Automatically rebalances out-of-range positions using the Meteora native rebalance instruction. Configurable strategy, bin width, and trigger conditions. Optional composition filter skips rebalance on single-sided positions — only fires when token X is within a configured % range of total position value (default 40–60%).
 
 ## Stack
@@ -47,7 +47,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```bash
 cp .env.example .env
-docker compose up --build
+# Pass NEXT_PUBLIC_ vars as build args — they are baked into the JS bundle at build time
+docker build \
+  --build-arg NEXT_PUBLIC_RPC_URL=https://your-rpc.com \
+  -t diver .
+docker compose up
 ```
 
 ## Configuration
@@ -61,14 +65,9 @@ NEXT_PUBLIC_WS_URL=wss://api.mainnet-beta.solana.com
 
 # Optional — Redis for caching
 REDIS_URL=redis://redis:6379
-
-# Server monitor PIN — protects /api/unlock, /api/lock, /api/monitor
-# Leave empty to disable auth (dev only). Set a strong random string in production.
-DIVER_PIN=your-secret-pin
-NEXT_PUBLIC_DIVER_PIN=your-secret-pin  # must match DIVER_PIN
 ```
 
-RPC URL can also be changed at runtime from the Settings page — no rebuild needed.
+RPC URL can also be changed at runtime from the Settings page — no rebuild needed for local dev.
 
 ## Server monitor
 
@@ -78,9 +77,9 @@ The server monitor runs inside the Next.js process and keeps checking your posit
 1. Go to DLMM → Monitor → click **Unlock** under the Server Monitor panel
 2. Enter your wallet password — the key is decrypted in the browser, only the 32-byte seed is sent to the server over HTTPS
 3. The server holds the keypair in memory (never on disk) and auto-rebalances when triggers fire
-4. Click **Lock** to zero and remove the key, or it expires automatically after the configured TTL
-
-**Securing the API:** Set `DIVER_PIN` and `NEXT_PUBLIC_DIVER_PIN` in `.env` to the same random string. All `/api/*` routes require `Authorization: Bearer <pin>`.
+4. Your configured RPC URL is forwarded to the server so it uses the same endpoint as the browser
+5. Check interval respects Settings → Check Interval (minimum 60s server-side to avoid rate limits)
+6. Click **Lock** to zero and remove the key, or it expires automatically after the configured TTL
 
 ## Systemd (VPS/server)
 
@@ -94,7 +93,7 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 - Private keys never leave the browser unencrypted. AES-256-GCM encryption happens client-side; the password never touches the server.
 - Server monitor: only a 32-byte seed is sent over HTTPS. The keypair is held in server memory only — never written to disk — and zeroed on lock or expiry.
-- Set `DIVER_PIN` in production to protect the server monitor API.
+- LP Agent API key is stored in `sessionStorage` (cleared on browser close), not persisted to disk.
 - Auto-rebalance (browser mode) caches the password in memory for the session — you are prompted before each rebalance unless you cache it.
 - Use a private RPC endpoint in production to avoid rate limits and improve reliability.
 

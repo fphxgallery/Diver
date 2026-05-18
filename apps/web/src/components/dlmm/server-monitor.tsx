@@ -11,15 +11,11 @@ import { useWalletStore } from "@/store/wallet-store";
 import { useDlmmStore } from "@/store/dlmm-store";
 import { useMonitorStore } from "@/store/monitor-store";
 import { decryptKeystore } from "@diver/keypair-store";
+import { getRpcUrl } from "@/lib/solana/client";
 import { healthColor, healthLabel, type PositionHealth, type RebalanceRecord } from "@/lib/meteora/monitor";
 import { cn } from "@/lib/utils";
 import { Server, Lock, Unlock, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Clock, Zap } from "lucide-react";
 
-const PIN = process.env.NEXT_PUBLIC_DIVER_PIN ?? "";
-
-function authHeaders(): Record<string, string> {
-  return PIN ? { Authorization: `Bearer ${PIN}` } : {};
-}
 
 interface MonitorStatus {
   health: PositionHealth[];
@@ -35,7 +31,7 @@ function useServerMonitor(pollInterval = 15_000) {
 
   const fetch_ = useCallback(async () => {
     try {
-      const res = await fetch("/api/monitor", { headers: authHeaders() });
+      const res = await fetch("/api/monitor", { headers: {} });
       if (res.ok) setStatus(await res.json());
     } catch {}
   }, []);
@@ -52,7 +48,6 @@ function useServerMonitor(pollInterval = 15_000) {
 function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { wallets, activeId } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
-  const { pairs } = useDlmmStore();
   const { settings } = useMonitorStore();
   const [password, setPassword] = useState("");
   const [ttl, setTtl] = useState(8);
@@ -70,20 +65,18 @@ function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void })
       const seed = secretKey.slice(0, 32);
       const seedBase64 = Buffer.from(seed).toString("base64");
 
-      const poolAddresses = pairs.map(p => p.address);
-      const pairNames = Object.fromEntries(pairs.map(p => [p.address, p.name]));
-
       const res = await fetch("/api/unlock", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           walletId: active.id,
           publicKey: active.publicKey,
           seedBase64,
           ttlHours: ttl,
           settings,
-          poolAddresses,
-          pairNames,
+          poolAddresses: [],
+          pairNames: {},
+          rpcUrl: getRpcUrl("mainnet-beta"),
         }),
       });
 
@@ -141,7 +134,7 @@ function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void })
           <div className="text-xs text-muted-foreground bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
             ⚠ Key held in server memory only. Cleared on server restart or TTL expiry.
           </div>
-          {error && <p className="text-destructive text-sm">{error}</p>}
+{error && <p className="text-destructive text-sm">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -157,7 +150,7 @@ function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void })
 async function lock(walletId?: string) {
   await fetch("/api/lock", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ walletId }),
   });
 }
@@ -166,9 +159,28 @@ export function ServerMonitor() {
   const { wallets, activeId } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
   const { status, refresh } = useServerMonitor();
+  const { positions } = useDlmmStore();
   const [unlockOpen, setUnlockOpen] = useState(false);
 
   const isUnlocked = status?.unlocked.some(u => u.walletId === active?.id) ?? false;
+
+  // Push position pools to server then immediately trigger a check
+  useEffect(() => {
+    if (!isUnlocked || !active) return;
+    const userPositions = positions[active.publicKey] ?? [];
+    if (userPositions.length === 0) return;
+    const poolAddresses = [...new Set(userPositions.map(p => p.lbPair))];
+    const pairNames = Object.fromEntries(userPositions.map(p => [p.lbPair, p.pairName]));
+    fetch("/api/monitor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update_pools", walletId: active.id, poolAddresses, pairNames }),
+    }).then(() => fetch("/api/monitor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "check_now" }),
+    })).then(() => setTimeout(refresh, 2000));
+  }, [isUnlocked, active?.id, positions]);
   const myEntry = status?.unlocked.find(u => u.walletId === active?.id);
   const ttlMs = myEntry ? myEntry.expiresAt - Date.now() : 0;
   const ttlHours = Math.max(0, ttlMs / 3_600_000).toFixed(1);
@@ -183,9 +195,20 @@ export function ServerMonitor() {
   }
 
   async function handleCheckNow() {
+    // Sync pools first (in case positions changed since last sync)
+    const userPositions = active ? (positions[active.publicKey] ?? []) : [];
+    if (active && userPositions.length > 0) {
+      const poolAddresses = [...new Set(userPositions.map(p => p.lbPair))];
+      const pairNames = Object.fromEntries(userPositions.map(p => [p.lbPair, p.pairName]));
+      await fetch("/api/monitor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_pools", walletId: active.id, poolAddresses, pairNames }),
+      });
+    }
     await fetch("/api/monitor", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "check_now" }),
     });
     setTimeout(refresh, 2000);

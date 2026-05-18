@@ -20,6 +20,11 @@ COPY --from=deps /app/packages/keypair-store/node_modules ./packages/keypair-sto
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CI=true
+# NEXT_PUBLIC_ vars are baked into the bundle at build time — pass via --build-arg
+ARG NEXT_PUBLIC_DIVER_PIN
+ARG NEXT_PUBLIC_RPC_URL
+ENV NEXT_PUBLIC_DIVER_PIN=$NEXT_PUBLIC_DIVER_PIN
+ENV NEXT_PUBLIC_RPC_URL=$NEXT_PUBLIC_RPC_URL
 RUN pnpm --filter web build
 
 # ---- runner ----

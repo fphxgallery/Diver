@@ -8,6 +8,7 @@ export interface KeyEntry {
   settings: MonitorSettings;
   poolAddresses: string[];
   pairNames: Record<string, string>;
+  rpcUrl: string;
 }
 
 // Module-level singleton — survives across requests in the same Node.js process

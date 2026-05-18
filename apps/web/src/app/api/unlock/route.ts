@@ -16,6 +16,7 @@ interface UnlockBody {
   settings?: Partial<MonitorSettings>;
   poolAddresses?: string[];
   pairNames?: Record<string, string>;
+  rpcUrl?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { walletId, publicKey, seedBase64, ttlHours = 8, settings, poolAddresses = [], pairNames = {} } = body;
+  const { walletId, publicKey, seedBase64, ttlHours = 8, settings, poolAddresses = [], pairNames = {}, rpcUrl = "https://api.mainnet-beta.solana.com" } = body;
 
   if (!walletId || !publicKey || !seedBase64) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     settings: { ...DEFAULT_MONITOR_SETTINGS, ...settings },
     poolAddresses,
     pairNames,
+    rpcUrl,
   }, ttlMs);
 
   return NextResponse.json({ ok: true, expiresAt });

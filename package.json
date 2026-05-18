@@ -8,7 +8,7 @@
     "typecheck": "pnpm --filter web typecheck"
   },
   "devDependencies": {
-    "typescript": "^5.8"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=20",

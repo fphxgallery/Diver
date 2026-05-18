@@ -17,6 +17,7 @@ import type { StoredWallet } from "@diver/keypair-store";
 
 const SETTINGS_KEY = "diver:monitor-settings";
 const HISTORY_KEY = "diver:rebalance-history";
+const LP_API_KEY = "diver:lp-api-key"; // sessionStorage — cleared on browser close
 const MAX_HISTORY = 50;
 
 interface MonitorState {
@@ -61,14 +62,20 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
     if (typeof window === "undefined") return;
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
-      if (raw) set({ settings: { ...DEFAULT_MONITOR_SETTINGS, ...JSON.parse(raw) } });
+      const base = raw ? { ...DEFAULT_MONITOR_SETTINGS, ...JSON.parse(raw) } : DEFAULT_MONITOR_SETTINGS;
+      const lpAgentApiKey = sessionStorage.getItem(LP_API_KEY) ?? "";
+      set({ settings: { ...base, lpAgentApiKey } });
     } catch {}
   },
 
   saveSettings: (s) => {
     const next = { ...get().settings, ...s };
     set({ settings: next });
-    if (typeof window !== "undefined") localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    if (typeof window !== "undefined") {
+      if ("lpAgentApiKey" in s) sessionStorage.setItem(LP_API_KEY, next.lpAgentApiKey);
+      const { lpAgentApiKey: _, ...rest } = next;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
+    }
   },
 
   loadHistory: () => {
