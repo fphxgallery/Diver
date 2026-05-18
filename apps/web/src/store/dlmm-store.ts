@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { getTopPairs, searchPairs, type DlmmPair } from "@/lib/meteora/pools";
 import { getUserPositions, isPositionInRange, type PositionInfo } from "@/lib/meteora/positions";
+import { getOpeningPositions } from "@/lib/meteora/lpagent";
 
 interface UserPositionWithMeta extends PositionInfo {
   pairName: string;
@@ -17,10 +18,13 @@ interface DlmmState {
 
   positions: Record<string, UserPositionWithMeta[]>; // keyed by walletPubkey
   positionsLoading: Record<string, boolean>;
+  positionsLoaded: Record<string, boolean>;
+  positionsLastFetchedAt: Record<string, number>;
 
   loadPairs: () => Promise<void>;
   searchPairs: (query: string) => Promise<DlmmPair[]>;
   loadPositions: (walletPubkey: string, poolAddresses: string[], pairNames: Record<string, string>) => Promise<void>;
+  discoverAndLoadPositions: (walletPubkey: string, apiKey: string) => Promise<void>;
   getPositions: (walletPubkey: string) => UserPositionWithMeta[];
   invalidatePositions: (walletPubkey: string) => void;
 }
@@ -31,6 +35,8 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
   pairsLoaded: false,
   positions: {},
   positionsLoading: {},
+  positionsLoaded: {},
+  positionsLastFetchedAt: {},
 
   loadPairs: async () => {
     if (get().pairsLoaded || get().pairsLoading) return;
@@ -73,13 +79,30 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
     }
   },
 
+  discoverAndLoadPositions: async (walletPubkey, apiKey) => {
+    const { positionsLoading, positionsLastFetchedAt } = get();
+    if (positionsLoading[walletPubkey]) return;
+    const lastFetch = positionsLastFetchedAt[walletPubkey] ?? 0;
+    if (Date.now() - lastFetch < 60_000) return;
+    set(s => ({ positionsLastFetchedAt: { ...s.positionsLastFetchedAt, [walletPubkey]: Date.now() } }));
+    const lpPositions = await getOpeningPositions(walletPubkey, apiKey);
+    const poolAddresses = [...new Set(lpPositions.map(p => p.pool))];
+    const pairNames = Object.fromEntries(lpPositions.map(p => [p.pool, p.pairName]));
+    await get().loadPositions(walletPubkey, poolAddresses, pairNames);
+    set(s => ({ positionsLoaded: { ...s.positionsLoaded, [walletPubkey]: true } }));
+  },
+
   getPositions: (walletPubkey) => get().positions[walletPubkey] ?? [],
 
   invalidatePositions: (walletPubkey) => {
     set(s => {
-      const next = { ...s.positions };
-      delete next[walletPubkey];
-      return { positions: next };
+      const positions = { ...s.positions };
+      const positionsLoaded = { ...s.positionsLoaded };
+      const positionsLastFetchedAt = { ...s.positionsLastFetchedAt };
+      delete positions[walletPubkey];
+      delete positionsLoaded[walletPubkey];
+      delete positionsLastFetchedAt[walletPubkey];
+      return { positions, positionsLoaded, positionsLastFetchedAt };
     });
   },
 }));

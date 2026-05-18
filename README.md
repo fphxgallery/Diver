@@ -12,6 +12,7 @@ Self-hosted Solana wallet manager and Meteora DLMM liquidity position tool.
 - **Token swaps** — Jupiter v6 aggregator with real-time quotes, price impact warnings, and slippage control.
 - **Transfers** — Send SOL and SPL tokens with fee estimation.
 - **Meteora DLMM** — Browse pools sorted by 24h Fee/TVL ratio with token logos, open positions with Spot/Curve/Bid-Ask strategies, remove liquidity, and claim fees. Filter pools by minimum TVL from Settings. Pool address links directly to Meteora.
+- **Position discovery** — Connects to the LP Agent API to auto-discover all open DLMM positions for your wallet. No need to manually track pool addresses. Configure your API key in Settings → Integrations. Respects the 5 RPM rate limit with a 60-second cooldown between fetches.
 - **Bin range presets** — New position dialog uses percentage-based range presets (±10%, ±25%, ±50%, ±100%) relative to the pool's bin step, so ranges are meaningful across different pools.
 - **Browser monitor** — Polls positions on a configurable interval while the tab is open. Shows range health and edge proximity.
 - **Server monitor** — Runs in the Next.js server process — continues monitoring and auto-rebalancing even when you navigate away or close the tab. Key is decrypted client-side; only the seed is sent to the server over HTTPS.

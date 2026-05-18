@@ -45,8 +45,11 @@ const STRATEGIES: Strategy[] = [
 
 const PCT_RANGE_OPTIONS = [10, 25, 50, 100];
 
+// 69 bins max: position account = 112 bytes × numBins; Solana caps inner-ix realloc at 10240 bytes
+const MAX_BINS = 69;
+
 function pctToNumBins(pct: number, binStep: number): number {
-  return Math.max(2, Math.round((pct / 100) * binStep));
+  return Math.min(MAX_BINS, Math.max(2, Math.round((pct / 100) * binStep)));
 }
 
 export function NewPositionDialog({ open, onClose, pair }: Props) {

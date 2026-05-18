@@ -55,6 +55,8 @@ export interface MonitorSettings {
   compositionCheckEnabled: boolean;
   minXRatioPct: number;
   maxXRatioPct: number;
+  /** LP Agent API key for position discovery */
+  lpAgentApiKey: string;
 }
 
 export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
@@ -69,6 +71,7 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   compositionCheckEnabled: false,
   minXRatioPct: 40,
   maxXRatioPct: 60,
+  lpAgentApiKey: "",
 };
 
 export function computePositionHealth(

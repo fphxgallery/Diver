@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
 import { getTopAprPairs, formatFeeRatio, formatLiquidity } from "@/lib/meteora/pools";
 import { useMonitorStore } from "@/store/monitor-store";
+import { useDlmmStore } from "@/store/dlmm-store";
 import { Layers, Wallet, TrendingUp, DollarSign } from "lucide-react";
 import Link from "next/link";
 
@@ -37,8 +38,16 @@ export default function DashboardPage() {
   const { wallets, activeId, hydrated } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
   const { settings, loadSettings } = useMonitorStore();
+  const { discoverAndLoadPositions, getPositions } = useDlmmStore();
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  useEffect(() => {
+    if (!active || !settings.lpAgentApiKey) return;
+    discoverAndLoadPositions(active.publicKey, settings.lpAgentApiKey);
+  }, [active?.publicKey, settings.lpAgentApiKey, discoverAndLoadPositions]);
+
+  const userPositions = active ? getPositions(active.publicKey) : [];
 
   const { data: balance } = useQuery({
     queryKey: ["balance", active?.publicKey],
@@ -87,7 +96,7 @@ export default function DashboardPage() {
                 icon={Wallet}
                 href="/wallets"
               />
-              <StatCard label="DLMM Positions" value="—" icon={Layers} href="/dlmm" />
+              <StatCard label="DLMM Positions" value={userPositions.length > 0 ? String(userPositions.length) : "—"} icon={Layers} href="/dlmm" />
               <StatCard label="Total Value" value="—" icon={DollarSign} />
               <StatCard label="24h Fees Earned" value="—" icon={TrendingUp} />
             </div>
@@ -98,10 +107,27 @@ export default function DashboardPage() {
                   <Layers className="w-4 h-4 text-muted-foreground" />
                   Active DLMM Positions
                 </h2>
-                <p className="text-muted-foreground text-sm py-8 text-center">
-                  No positions yet.{" "}
-                  <Link href="/dlmm" className="text-primary hover:underline">Open DLMM →</Link>
-                </p>
+                {userPositions.length === 0 ? (
+                  <p className="text-muted-foreground text-sm py-8 text-center">
+                    No positions yet.{" "}
+                    <Link href="/dlmm" className="text-primary hover:underline">Open DLMM →</Link>
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {userPositions.map(pos => (
+                      <Link
+                        key={pos.publicKey}
+                        href={`/dlmm/${pos.lbPair}`}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-secondary transition-colors group"
+                      >
+                        <span className="text-sm font-medium group-hover:text-primary transition-colors">{pos.pairName}</span>
+                        <span className={`text-xs font-medium ${pos.inRange ? "text-green-400" : "text-yellow-400"}`}>
+                          {pos.inRange ? "In Range" : "Out of Range"}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </Card>
               <Card className="p-5 border-border">
                 <h2 className="font-medium mb-4 flex items-center gap-2">

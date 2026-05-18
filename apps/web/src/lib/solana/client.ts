@@ -23,7 +23,7 @@ export function getRpcUrl(cluster: Cluster = "mainnet-beta") {
 }
 
 export function createRpc(cluster: Cluster = "mainnet-beta") {
-  return createSolanaRpc(RPC_URLS[cluster]);
+  return createSolanaRpc(getRpcUrl(cluster));
 }
 
 export function createRpcSubscriptions(cluster: Cluster = "mainnet-beta") {

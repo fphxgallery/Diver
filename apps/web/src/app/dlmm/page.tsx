@@ -89,7 +89,7 @@ type Tab = "pools" | "positions" | "monitor";
 export default function DlmmPage() {
   const { wallets, activeId, hydrated } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
-  const { pairs, pairsLoading, pairsLoaded, loadPairs, getPositions, positions } = useDlmmStore();
+  const { pairs, pairsLoading, pairsLoaded, loadPairs, getPositions, positions, discoverAndLoadPositions, positionsLoading } = useDlmmStore();
   const { settings, loadSettings } = useMonitorStore();
 
   const [tab, setTab] = useState<Tab>("pools");
@@ -98,6 +98,11 @@ export default function DlmmPage() {
   const { searchPairs } = useDlmmStore();
 
   useEffect(() => { loadPairs(); loadSettings(); }, [loadPairs, loadSettings]);
+
+  useEffect(() => {
+    if (!active || !settings.lpAgentApiKey) return;
+    discoverAndLoadPositions(active.publicKey, settings.lpAgentApiKey);
+  }, [active?.publicKey, settings.lpAgentApiKey, discoverAndLoadPositions]);
 
   const filteredPairs = useMemo(() => pairs.filter(p => p.tvl >= settings.minPoolTvl), [pairs, settings.minPoolTvl]);
 

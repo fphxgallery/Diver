@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useMonitorStore } from "@/store/monitor-store";
 import { StrategyType } from "@meteora-ag/dlmm";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Server, RefreshCw, Zap, Filter } from "lucide-react";
+import { CheckCircle2, Server, RefreshCw, Zap, Filter, Key } from "lucide-react";
 
 const RPC_PRESETS = [
   { label: "Mainnet (public)", value: "https://api.mainnet-beta.solana.com" },
@@ -158,6 +158,25 @@ export default function SettingsPage() {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Integrations */}
+      <Section title="Integrations" icon={Key}>
+        <div className="space-y-3">
+          <div>
+            <Label className="mb-1.5 block">LP Agent API Key</Label>
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                value={settings.lpAgentApiKey}
+                onChange={e => saveSetting("lpAgentApiKey", e.target.value)}
+                placeholder="your-api-key"
+                className="bg-secondary border-border font-mono text-sm flex-1"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">Used to auto-discover your open DLMM positions. Get a key at lpagent.io.</p>
           </div>
         </div>
       </Section>
