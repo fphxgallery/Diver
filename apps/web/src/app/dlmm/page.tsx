@@ -9,6 +9,7 @@ import { WalletHydrator } from "@/components/wallet/wallet-hydrator";
 import { PoolCard } from "@/components/dlmm/pool-card";
 import { PositionCard } from "@/components/dlmm/position-card";
 import { MonitorPanel } from "@/components/dlmm/monitor-panel";
+import { ServerMonitor } from "@/components/dlmm/server-monitor";
 import { useWalletStore } from "@/store/wallet-store";
 import { useDlmmStore } from "@/store/dlmm-store";
 import { Search, Layers, Activity, AlertTriangle } from "lucide-react";
@@ -134,7 +135,12 @@ export default function DlmmPage() {
               )}
             </div>
           )}
-          {tab === "monitor" && <MonitorPanel />}
+          {tab === "monitor" && (
+            <div className="space-y-4">
+              <MonitorPanel />
+              <ServerMonitor />
+            </div>
+          )}
         </Tabs>
       </div>
     </>

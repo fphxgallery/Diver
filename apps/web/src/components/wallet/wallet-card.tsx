@@ -4,21 +4,119 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, CheckCircle2, Trash2, Radio } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Copy, CheckCircle2, Trash2, Radio, Download, Eye, EyeOff } from "lucide-react";
 import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
+import { decryptKeystore } from "@diver/keypair-store";
 import type { StoredWallet } from "@diver/keypair-store";
 import { cn } from "@/lib/utils";
+import bs58 from "bs58";
 
 interface Props {
   wallet: StoredWallet;
+}
+
+function ExportDialog({ wallet, open, onClose }: { wallet: StoredWallet; open: boolean; onClose: () => void }) {
+  const [password, setPassword] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  const [error, setError] = useState("");
+  const [visible, setVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function reveal() {
+    setError("");
+    try {
+      const secretKey = decryptKeystore(wallet.keystore, password);
+      setPrivateKey(bs58.encode(secretKey));
+    } catch {
+      setError("Wrong password");
+    }
+  }
+
+  function copy() {
+    navigator.clipboard.writeText(privateKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleClose() {
+    setPassword("");
+    setPrivateKey("");
+    setError("");
+    setVisible(false);
+    setCopied(false);
+    onClose();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
+      <DialogContent className="bg-card border-border max-w-sm" onClick={e => e.stopPropagation()}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Download className="w-4 h-4 text-primary" /> Export Private Key — {wallet.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="text-xs text-muted-foreground bg-red-500/5 border border-red-500/20 rounded-lg p-3">
+            ⚠ Never share your private key. Anyone with it has full control of your wallet.
+          </div>
+          {!privateKey ? (
+            <>
+              <Input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && reveal()}
+                placeholder="Wallet password"
+                className="bg-secondary border-border"
+                autoFocus
+              />
+              {error && <p className="text-destructive text-sm">{error}</p>}
+            </>
+          ) : (
+            <div className="space-y-2">
+              <div className="relative">
+                <Input
+                  readOnly
+                  value={visible ? privateKey : "•".repeat(privateKey.length)}
+                  className="bg-secondary border-border font-mono text-xs pr-10"
+                />
+                <button
+                  onClick={() => setVisible(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <Button size="sm" variant="outline" className="w-full" onClick={copy}>
+                {copied ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-green-400" /> Copied</> : <><Copy className="w-3.5 h-3.5 mr-1.5" /> Copy</>}
+              </Button>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          {!privateKey ? (
+            <>
+              <Button variant="outline" onClick={handleClose}>Cancel</Button>
+              <Button onClick={reveal} disabled={!password}>Reveal</Button>
+            </>
+          ) : (
+            <Button onClick={handleClose}>Done</Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function WalletCard({ wallet }: Props) {
   const { activeId, setActive, removeWallet } = useWalletStore();
   const isActive = activeId === wallet.id;
   const [copied, setCopied] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const { data: balance } = useQuery({
     queryKey: ["balance", wallet.publicKey],
@@ -78,6 +176,14 @@ export function WalletCard({ wallet }: Props) {
             <Button
               size="sm"
               variant="ghost"
+              className="h-7 px-2 text-muted-foreground hover:text-foreground"
+              onClick={e => { e.stopPropagation(); setExportOpen(true); }}
+            >
+              <Download className="w-3 h-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
               onClick={e => { e.stopPropagation(); removeWallet(wallet.id); }}
             >
@@ -86,6 +192,8 @@ export function WalletCard({ wallet }: Props) {
           </div>
         </div>
       </div>
+
+      <ExportDialog wallet={wallet} open={exportOpen} onClose={() => setExportOpen(false)} />
     </Card>
   );
 }

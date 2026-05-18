@@ -90,6 +90,27 @@ export async function buildSplTransfer(params: {
   return Buffer.from(tx.serialize()).toString("base64");
 }
 
+export async function signAndSendTransactionWithKeypair(
+  txBase64: string,
+  keypair: Keypair,
+  cluster: Cluster = "mainnet-beta"
+): Promise<string> {
+  const connection = getConnection(cluster);
+  const txBytes = Buffer.from(txBase64, "base64");
+  const tx = VersionedTransaction.deserialize(txBytes);
+  tx.sign([keypair]);
+
+  const sig = await connection.sendRawTransaction(tx.serialize(), {
+    skipPreflight: false,
+    maxRetries: 3,
+  });
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+
+  return sig;
+}
+
 export async function simulateTx(
   txBase64: string,
   cluster: Cluster = "mainnet-beta"
