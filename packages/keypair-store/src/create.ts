@@ -3,7 +3,8 @@ import * as bip39 from "bip39";
 import { derivePath } from "ed25519-hd-key";
 import { encryptKeystore } from "./crypto";
 import type { StoredWallet } from "./types";
-import { randomUUID } from "crypto";
+
+function uuid() { return globalThis.crypto.randomUUID(); }
 
 const DEFAULT_DERIVATION_PATH = "m/44'/501'/0'/0'";
 
@@ -29,7 +30,7 @@ export function importFromMnemonic(
   const keypair = Keypair.fromSeed(key);
 
   return {
-    id: randomUUID(),
+    id: uuid(),
     name,
     publicKey: keypair.publicKey.toBase58(),
     keystore: encryptKeystore(keypair.secretKey.slice(0, 32), password),
@@ -46,7 +47,7 @@ export function importFromPrivateKeyBytes(
   const keypair = Keypair.fromSecretKey(secretKey);
 
   return {
-    id: randomUUID(),
+    id: uuid(),
     name,
     publicKey: keypair.publicKey.toBase58(),
     keystore: encryptKeystore(keypair.secretKey.slice(0, 32), password),

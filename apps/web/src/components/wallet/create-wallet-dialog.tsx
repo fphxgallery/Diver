@@ -43,10 +43,14 @@ export function CreateWalletDialog({ open, onClose }: Props) {
     if (password.length < 8) { setError("Password must be 8+ characters"); return; }
     if (password !== confirmPassword) { setError("Passwords don't match"); return; }
     setError("");
-    const { wallet, mnemonic: m } = createWallet(name.trim(), password);
-    setMnemonic(m);
-    addWallet(wallet);
-    setStep("mnemonic");
+    try {
+      const { wallet, mnemonic: m } = createWallet(name.trim(), password);
+      setMnemonic(m);
+      addWallet(wallet);
+      setStep("mnemonic");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create wallet");
+    }
   }
 
   function copyMnemonic() {
