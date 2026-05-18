@@ -5,6 +5,9 @@ import { getTopPairs, searchPairs, type DlmmPair } from "@/lib/meteora/pools";
 import { getUserPositions, isPositionInRange, type PositionInfo } from "@/lib/meteora/positions";
 import { getOpeningPositions } from "@/lib/meteora/lpagent";
 
+// Module-level cache — survives re-renders, deduplicates concurrent calls
+const discoveryInFlight = new Map<string, Promise<void>>();
+
 interface UserPositionWithMeta extends PositionInfo {
   pairName: string;
   inRange: boolean;
@@ -80,16 +83,28 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
   },
 
   discoverAndLoadPositions: async (walletPubkey, apiKey) => {
-    const { positionsLoading, positionsLastFetchedAt } = get();
-    if (positionsLoading[walletPubkey]) return;
-    const lastFetch = positionsLastFetchedAt[walletPubkey] ?? 0;
+    const lastFetch = get().positionsLastFetchedAt[walletPubkey] ?? 0;
     if (Date.now() - lastFetch < 60_000) return;
-    set(s => ({ positionsLastFetchedAt: { ...s.positionsLastFetchedAt, [walletPubkey]: Date.now() } }));
-    const lpPositions = await getOpeningPositions(walletPubkey, apiKey);
-    const poolAddresses = [...new Set(lpPositions.map(p => p.pool))];
-    const pairNames = Object.fromEntries(lpPositions.map(p => [p.pool, p.pairName]));
-    await get().loadPositions(walletPubkey, poolAddresses, pairNames);
-    set(s => ({ positionsLoaded: { ...s.positionsLoaded, [walletPubkey]: true } }));
+
+    // Return existing in-flight promise if one is already running
+    const existing = discoveryInFlight.get(walletPubkey);
+    if (existing) return existing;
+
+    const promise = (async () => {
+      set(s => ({ positionsLastFetchedAt: { ...s.positionsLastFetchedAt, [walletPubkey]: Date.now() } }));
+      try {
+        const lpPositions = await getOpeningPositions(walletPubkey, apiKey);
+        const poolAddresses = [...new Set(lpPositions.map(p => p.pool))];
+        const pairNames = Object.fromEntries(lpPositions.map(p => [p.pool, p.pairName]));
+        await get().loadPositions(walletPubkey, poolAddresses, pairNames);
+        set(s => ({ positionsLoaded: { ...s.positionsLoaded, [walletPubkey]: true } }));
+      } finally {
+        discoveryInFlight.delete(walletPubkey);
+      }
+    })();
+
+    discoveryInFlight.set(walletPubkey, promise);
+    return promise;
   },
 
   getPositions: (walletPubkey) => get().positions[walletPubkey] ?? [],
