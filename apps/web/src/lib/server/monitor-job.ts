@@ -44,9 +44,13 @@ async function runCheck() {
       await Promise.allSettled(
         entry.poolAddresses.map(async (poolAddr) => {
           try {
-            const { userPositions, activeBinId } = await getUserPositions(poolAddr, entry.publicKey);
+            const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, entry.publicKey);
             for (const pos of userPositions) {
-              const h = computePositionHealth(pos, activeBinId, entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8));
+              const h = computePositionHealth(pos, activeBinId, entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8), {
+                pricePerToken: activeBinPricePerToken,
+                tokenXDecimals,
+                tokenYDecimals,
+              });
               newHealth.push(h);
 
               if (!entry.settings.enabled) continue;

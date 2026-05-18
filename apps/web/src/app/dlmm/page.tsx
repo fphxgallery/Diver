@@ -46,7 +46,7 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
     const isRight = className?.includes("text-right");
     return (
       <th
-        className={`px-4 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap ${className ?? ""}`}
+        className={`px-3 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap ${className ?? ""}`}
         onClick={() => toggleSort(k)}
       >
         <span className={`flex items-center gap-1 ${isRight ? "justify-end" : ""}`}><SortIcon k={k} />{label}</span>
@@ -55,12 +55,12 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden">
+    <div className="rounded-xl border border-border overflow-hidden max-w-4xl mx-auto">
       <table className="w-full text-sm">
         <thead className="bg-secondary/60 border-b border-border">
           <tr>
-            <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-left">Pool</th>
-            <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-left">Bin Step</th>
+            <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Pool</th>
+            <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Bin Step</th>
             <ColHeader k="fee_tvl_24h" label="Fee/TVL 24h" className="text-right" />
             <ColHeader k="tvl" label="TVL" className="text-right" />
             <ColHeader k="volume" label="Vol 24h" className="text-right" />
@@ -70,12 +70,12 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
         <tbody className="divide-y divide-border">
           {sorted.map(pair => (
             <tr key={pair.address} onClick={() => router.push(`/dlmm/${pair.address}`)} className="hover:bg-secondary/40 transition-colors cursor-pointer">
-              <td className="px-4 py-3 font-medium">{pair.name}</td>
-              <td className="px-4 py-3 text-muted-foreground">{pair.pool_config.bin_step}</td>
-              <td className="px-4 py-3 text-right font-semibold text-green-400">{formatFeeRatio(pair.fee_tvl_ratio["24h"])}</td>
-              <td className="px-4 py-3 text-right text-muted-foreground">{formatLiquidity(pair.tvl)}</td>
-              <td className="px-4 py-3 text-right text-muted-foreground">{formatVolume(pair.volume["24h"])}</td>
-              <td className="px-4 py-3 text-right text-muted-foreground">{formatVolume(pair.fees["24h"])}</td>
+              <td className="px-3 py-2 font-medium">{pair.name}</td>
+              <td className="px-3 py-2 text-muted-foreground">{pair.pool_config.bin_step}</td>
+              <td className="px-3 py-2 text-right font-semibold text-green-400">{formatFeeRatio(pair.fee_tvl_ratio["24h"])}</td>
+              <td className="px-3 py-2 text-right text-muted-foreground">{formatLiquidity(pair.tvl)}</td>
+              <td className="px-3 py-2 text-right text-muted-foreground">{formatVolume(pair.volume["24h"])}</td>
+              <td className="px-3 py-2 text-right text-muted-foreground">{formatVolume(pair.fees["24h"])}</td>
             </tr>
           ))}
         </tbody>
@@ -102,7 +102,7 @@ export default function DlmmPage() {
   const filteredPairs = useMemo(() => pairs.filter(p => p.tvl >= settings.minPoolTvl), [pairs, settings.minPoolTvl]);
 
   useEffect(() => {
-    if (!search.trim()) { setSearchResults(filteredPairs.slice(0, 50)); return; }
+    if (!search.trim()) { setSearchResults(filteredPairs.slice(0, 25)); return; }
     const t = setTimeout(async () => {
       const results = await searchPairs(search);
       setSearchResults(results);

@@ -31,7 +31,13 @@ export async function getUserPositions(
   poolAddress: string,
   walletPublicKey: string,
   cluster: Cluster = "mainnet-beta"
-): Promise<{ userPositions: PositionInfo[]; activeBinId: number }> {
+): Promise<{
+  userPositions: PositionInfo[];
+  activeBinId: number;
+  activeBinPricePerToken: string;
+  tokenXDecimals: number;
+  tokenYDecimals: number;
+}> {
   const connection = getConnection(cluster);
   const pool = await DLMM.create(connection, new PublicKey(poolAddress));
   const activeBin = await pool.getActiveBin();
@@ -49,7 +55,13 @@ export async function getUserPositions(
     lastUpdatedAt: p.positionData.lastUpdatedAt.toNumber(),
   }));
 
-  return { userPositions: mapped, activeBinId: activeBin.binId };
+  return {
+    userPositions: mapped,
+    activeBinId: activeBin.binId,
+    activeBinPricePerToken: activeBin.pricePerToken,
+    tokenXDecimals: pool.tokenX.mint.decimals,
+    tokenYDecimals: pool.tokenY.mint.decimals,
+  };
 }
 
 export async function getPoolBins(

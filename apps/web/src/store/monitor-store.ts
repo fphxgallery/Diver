@@ -95,9 +95,13 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       for (const wallet of wallets) {
         await Promise.allSettled(
           poolAddresses.map(async (poolAddr) => {
-            const { userPositions, activeBinId } = await getUserPositions(poolAddr, wallet.publicKey);
+            const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, wallet.publicKey);
             for (const pos of userPositions) {
-              const h = computePositionHealth(pos, activeBinId, pairNames[poolAddr] ?? poolAddr.slice(0, 8));
+              const h = computePositionHealth(pos, activeBinId, pairNames[poolAddr] ?? poolAddr.slice(0, 8), {
+                pricePerToken: activeBinPricePerToken,
+                tokenXDecimals,
+                tokenYDecimals,
+              });
               newHealth.push(h);
 
               // Auto-rebalance check

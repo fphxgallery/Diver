@@ -17,6 +17,8 @@ export interface PositionHealth {
   feeY: string;
   totalXAmount: string;
   totalYAmount: string;
+  /** 0–100: % of total position value that is token X. -1 if price unavailable */
+  xValueRatioPct: number;
   lastCheckedAt: number;
   /** Whether rebalance was triggered automatically */
   autoRebalanceTriggered: boolean;
@@ -49,6 +51,10 @@ export interface MonitorSettings {
   defaultStrategyType: StrategyType;
   /** Default number of bins for rebalanced positions */
   defaultNumBins: number;
+  /** Only rebalance if token X is between min/max % of total position value */
+  compositionCheckEnabled: boolean;
+  minXRatioPct: number;
+  maxXRatioPct: number;
 }
 
 export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
@@ -60,12 +66,16 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   minPoolTvl: 20_000,
   defaultStrategyType: StrategyType.Spot,
   defaultNumBins: 20,
+  compositionCheckEnabled: false,
+  minXRatioPct: 40,
+  maxXRatioPct: 60,
 };
 
 export function computePositionHealth(
   position: PositionInfo,
   activeBinId: number,
-  pairName: string
+  pairName: string,
+  priceInfo?: { pricePerToken: string; tokenXDecimals: number; tokenYDecimals: number }
 ): PositionHealth {
   const rangeWidth = position.upperBinId - position.lowerBinId;
   const inRange = activeBinId >= position.lowerBinId && activeBinId <= position.upperBinId;
@@ -78,6 +88,17 @@ export function computePositionHealth(
   const distFromUpper = position.upperBinId - activeBinId;
   const minDist = Math.min(distFromLower, distFromUpper);
   const edgeProximityPct = rangeWidth === 0 ? 0 : Math.max(0, (minDist / rangeWidth) * 100);
+
+  let xValueRatioPct = -1;
+  if (priceInfo) {
+    const { pricePerToken, tokenXDecimals, tokenYDecimals } = priceInfo;
+    const xHuman = Number(position.totalXAmount) / Math.pow(10, tokenXDecimals);
+    const yHuman = Number(position.totalYAmount) / Math.pow(10, tokenYDecimals);
+    const price = parseFloat(pricePerToken);
+    const xValueInY = xHuman * price;
+    const total = xValueInY + yHuman;
+    xValueRatioPct = total === 0 ? 50 : Math.max(0, Math.min(100, (xValueInY / total) * 100));
+  }
 
   return {
     positionKey: position.publicKey,
@@ -93,6 +114,7 @@ export function computePositionHealth(
     feeY: position.feeY,
     totalXAmount: position.totalXAmount,
     totalYAmount: position.totalYAmount,
+    xValueRatioPct,
     lastCheckedAt: Date.now(),
     autoRebalanceTriggered: false,
   };
@@ -100,6 +122,14 @@ export function computePositionHealth(
 
 export function shouldAutoRebalance(health: PositionHealth, settings: MonitorSettings): string | null {
   if (!settings.enabled) return null;
+
+  if (
+    settings.compositionCheckEnabled &&
+    health.xValueRatioPct !== -1 &&
+    (health.xValueRatioPct < settings.minXRatioPct || health.xValueRatioPct > settings.maxXRatioPct)
+  ) {
+    return null;
+  }
 
   if (settings.triggerOnOutOfRange && !health.inRange) {
     return "out_of_range";

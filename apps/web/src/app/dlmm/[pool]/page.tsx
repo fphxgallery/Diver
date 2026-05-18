@@ -129,7 +129,12 @@ export default function PoolDetailPage() {
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant="secondary" className="text-xs">{pair.pool_config.bin_step} step</Badge>
                 <Badge variant="secondary" className="text-xs">{pair.pool_config.base_fee_pct}% fee</Badge>
-                <span className="text-xs text-muted-foreground font-mono">{poolAddress.slice(0, 8)}…</span>
+                <a
+                  href={`https://app.meteora.ag/dlmm/${poolAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground font-mono hover:text-foreground transition-colors"
+                >{poolAddress.slice(0, 8)}…</a>
               </div>
             </div>
           </div>

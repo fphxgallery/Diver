@@ -18,6 +18,7 @@ import {
   type BinData,
 } from "@/lib/meteora/positions";
 import { formatFeeRatio } from "@/lib/meteora/pools";
+import { getTokenBalance } from "@/lib/solana/balance";
 import { signAndSendTransaction } from "@/lib/solana/send";
 import { cn } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
@@ -42,7 +43,11 @@ const STRATEGIES: Strategy[] = [
   { type: StrategyType.BidAsk, label: "Bid-Ask", description: "Bimodal distribution. Best for volatile pairs." },
 ];
 
-const BIN_RANGE_OPTIONS = [10, 20, 40, 69];
+const PCT_RANGE_OPTIONS = [10, 25, 50, 100];
+
+function pctToNumBins(pct: number, binStep: number): number {
+  return Math.max(2, Math.round((pct / 100) * binStep));
+}
 
 export function NewPositionDialog({ open, onClose, pair }: Props) {
   const { wallets, activeId } = useWalletStore();
@@ -50,7 +55,8 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
   const invalidate = useDlmmStore(s => s.invalidatePositions);
 
   const [strategy, setStrategy] = useState<StrategyType>(StrategyType.Spot);
-  const [numBins, setNumBins] = useState(20);
+  const [selectedPct, setSelectedPct] = useState(25);
+  const numBins = pctToNumBins(selectedPct, pair.pool_config.bin_step);
   const [amountX, setAmountX] = useState("");
   const [amountY, setAmountY] = useState("");
 
@@ -58,11 +64,20 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
   const [activeBinId, setActiveBinId] = useState(0);
   const [binsLoading, setBinsLoading] = useState(false);
 
+  const [balanceX, setBalanceX] = useState(0);
+  const [balanceY, setBalanceY] = useState(0);
+
   const [signOpen, setSignOpen] = useState(false);
   const [txSig, setTxSig] = useState("");
   const [error, setError] = useState("");
 
   const { minBinId, maxBinId } = getBinRangeAroundActive(activeBinId, numBins);
+
+  useEffect(() => {
+    if (!open || !active) return;
+    getTokenBalance(active.publicKey, pair.token_x.address).then(setBalanceX);
+    getTokenBalance(active.publicKey, pair.token_y.address).then(setBalanceY);
+  }, [open, active, pair.token_x.address, pair.token_y.address]);
 
   useEffect(() => {
     if (!open) return;
@@ -129,7 +144,7 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
   return (
     <>
       <Dialog open={open} onOpenChange={v => { if (!v) reset(); }}>
-        <DialogContent className="bg-card border-border max-w-lg">
+        <DialogContent className="bg-card border-border max-w-2xl">
           <DialogHeader>
             <DialogTitle>New Position — {pair.name}</DialogTitle>
           </DialogHeader>
@@ -162,16 +177,16 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
               <div className="flex items-center justify-between mb-2">
                 <Label>Bin Range</Label>
                 <div className="flex gap-1">
-                  {BIN_RANGE_OPTIONS.map(n => (
+                  {PCT_RANGE_OPTIONS.map(pct => (
                     <button
-                      key={n}
-                      onClick={() => setNumBins(n)}
+                      key={pct}
+                      onClick={() => setSelectedPct(pct)}
                       className={cn(
                         "px-2 py-0.5 rounded text-xs transition-colors",
-                        numBins === n ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"
+                        selectedPct === pct ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      ±{n / 2}
+                      ±{pct}%
                     </button>
                   ))}
                 </div>
@@ -188,28 +203,37 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
 
             {/* Amounts */}
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="mb-1.5 block">{tokenA} Amount</Label>
-                <Input
-                  value={amountX}
-                  onChange={e => setAmountX(e.target.value)}
-                  placeholder="0.00"
-                  type="number"
-                  min="0"
-                  className="bg-secondary border-border"
-                />
-              </div>
-              <div>
-                <Label className="mb-1.5 block">{tokenB} Amount</Label>
-                <Input
-                  value={amountY}
-                  onChange={e => setAmountY(e.target.value)}
-                  placeholder="0.00"
-                  type="number"
-                  min="0"
-                  className="bg-secondary border-border"
-                />
-              </div>
+              {([
+                { label: tokenA, value: amountX, set: setAmountX, balance: balanceX },
+                { label: tokenB, value: amountY, set: setAmountY, balance: balanceY },
+              ] as const).map(({ label, value, set, balance }) => (
+                <div key={label}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label>{label} Amount</Label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground">
+                        {balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                      </span>
+                      <button
+                        onClick={() => set((balance / 2).toFixed(6))}
+                        className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                      >50%</button>
+                      <button
+                        onClick={() => set(balance.toFixed(6))}
+                        className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                      >Max</button>
+                    </div>
+                  </div>
+                  <Input
+                    value={value}
+                    onChange={e => set(e.target.value)}
+                    placeholder="0.00"
+                    type="number"
+                    min="0"
+                    className="bg-secondary border-border"
+                  />
+                </div>
+              ))}
             </div>
 
             <div className="text-xs text-muted-foreground bg-secondary rounded-lg p-3 space-y-1">

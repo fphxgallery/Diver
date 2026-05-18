@@ -11,10 +11,11 @@ Self-hosted Solana wallet manager and Meteora DLMM liquidity position tool.
 - **Wallet management** — Create or import wallets via seed phrase or private key. Keys are encrypted with AES-256-GCM + PBKDF2 and stored locally. Export private key (base58) at any time.
 - **Token swaps** — Jupiter v6 aggregator with real-time quotes, price impact warnings, and slippage control.
 - **Transfers** — Send SOL and SPL tokens with fee estimation.
-- **Meteora DLMM** — Browse pools sorted by 24h Fee/TVL ratio with token logos, open positions with Spot/Curve/Bid-Ask strategies, remove liquidity, and claim fees. Filter pools by minimum TVL from Settings.
+- **Meteora DLMM** — Browse pools sorted by 24h Fee/TVL ratio with token logos, open positions with Spot/Curve/Bid-Ask strategies, remove liquidity, and claim fees. Filter pools by minimum TVL from Settings. Pool address links directly to Meteora.
+- **Bin range presets** — New position dialog uses percentage-based range presets (±10%, ±25%, ±50%, ±100%) relative to the pool's bin step, so ranges are meaningful across different pools.
 - **Browser monitor** — Polls positions on a configurable interval while the tab is open. Shows range health and edge proximity.
 - **Server monitor** — Runs in the Next.js server process — continues monitoring and auto-rebalancing even when you navigate away or close the tab. Key is decrypted client-side; only the seed is sent to the server over HTTPS.
-- **Auto-rebalance** — Automatically rebalances out-of-range positions using the Meteora native rebalance instruction. Configurable strategy, bin width, and trigger conditions.
+- **Auto-rebalance** — Automatically rebalances out-of-range positions using the Meteora native rebalance instruction. Configurable strategy, bin width, and trigger conditions. Optional composition filter skips rebalance on single-sided positions — only fires when token X is within a configured % range of total position value (default 40–60%).
 
 ## Stack
 

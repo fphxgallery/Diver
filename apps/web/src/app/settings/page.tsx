@@ -247,6 +247,59 @@ export default function SettingsPage() {
             />
           </div>
 
+          <Separator />
+
+          {/* Composition check */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Composition Filter</div>
+              <div className="text-xs text-muted-foreground">Only rebalance when token X is within the set % range of total value</div>
+            </div>
+            <button
+              onClick={() => saveSetting("compositionCheckEnabled", !settings.compositionCheckEnabled)}
+              className={cn("w-10 h-6 rounded-full transition-colors relative",
+                settings.compositionCheckEnabled ? "bg-primary" : "bg-secondary border border-border"
+              )}>
+              <span className={cn("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm",
+                settings.compositionCheckEnabled && "translate-x-4"
+              )} />
+            </button>
+          </div>
+
+          {settings.compositionCheckEnabled && (
+            <div className="space-y-2 pl-1">
+              <Label className="mb-1.5 block text-xs text-muted-foreground">Token X value range (% of total position value)</Label>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-6">Min</span>
+                  <Input
+                    type="number"
+                    value={settings.minXRatioPct}
+                    onChange={e => saveSetting("minXRatioPct", Math.min(parseFloat(e.target.value) || 0, settings.maxXRatioPct - 1))}
+                    className="bg-secondary border-border w-20 text-sm"
+                    min={0}
+                    max={99}
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
+                <span className="text-muted-foreground">–</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-6">Max</span>
+                  <Input
+                    type="number"
+                    value={settings.maxXRatioPct}
+                    onChange={e => saveSetting("maxXRatioPct", Math.max(parseFloat(e.target.value) || 0, settings.minXRatioPct + 1))}
+                    className="bg-secondary border-border w-20 text-sm"
+                    min={1}
+                    max={100}
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Default 40–60%. Single-sided positions (≈0% or ≈100%) will be skipped.</p>
+            </div>
+          )}
+
           <div className="text-xs text-muted-foreground bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
             ⚠ Auto-rebalance requires your wallet password to be cached in memory for the session. You will be prompted to enter it before each rebalance unless you cache it.
           </div>
