@@ -21,8 +21,8 @@ function fakeSparkline(seed: number): number[] {
 
 export function PoolCard({ pair }: Props) {
   const [tokenA, tokenB] = pair.name.split("-");
-  const aprNum = pair.apr * 100;
-  const sparkData = fakeSparkline(parseFloat(pair.liquidity) % 1000);
+  const aprNum = pair.apy;
+  const sparkData = fakeSparkline(pair.tvl % 1000);
 
   return (
     <Link href={`/dlmm/${pair.address}`}>
@@ -40,7 +40,7 @@ export function PoolCard({ pair }: Props) {
             </div>
             <div>
               <div className="font-semibold text-sm group-hover:text-primary transition-colors">{pair.name}</div>
-              <div className="text-xs text-muted-foreground">{pair.bin_step} bin step</div>
+              <div className="text-xs text-muted-foreground">{pair.pool_config.bin_step} bin step</div>
             </div>
           </div>
           <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-400 border-0">
@@ -59,19 +59,19 @@ export function PoolCard({ pair }: Props) {
             <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
               <Droplets className="w-3 h-3" /> TVL
             </div>
-            <div className="font-medium">{formatLiquidity(pair.liquidity)}</div>
+            <div className="font-medium">{formatLiquidity(pair.tvl)}</div>
           </div>
           <div>
             <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
               <TrendingUp className="w-3 h-3" /> Vol 24h
             </div>
-            <div className="font-medium">{formatVolume(pair.trade_volume_24h)}</div>
+            <div className="font-medium">{formatVolume(pair.volume["24h"])}</div>
           </div>
           <div>
             <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
               <Zap className="w-3 h-3" /> Fees 24h
             </div>
-            <div className="font-medium">{formatVolume(pair.fees_24h)}</div>
+            <div className="font-medium">{formatVolume(pair.fees["24h"])}</div>
           </div>
         </div>
       </Card>

@@ -88,8 +88,8 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
     const yRaw = parseFloat(amountY || "0");
     if (xRaw <= 0 && yRaw <= 0) throw new Error("Enter at least one amount");
 
-    const decimalsX = pair.token_x_decimals ?? 9;
-    const decimalsY = pair.token_y_decimals ?? 6;
+    const decimalsX = pair.token_x.decimals;
+    const decimalsY = pair.token_y.decimals;
     const totalX = new BN(Math.floor(xRaw * 10 ** decimalsX));
     const totalY = new BN(Math.floor(yRaw * 10 ** decimalsY));
 
@@ -212,8 +212,8 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
             </div>
 
             <div className="text-xs text-muted-foreground bg-secondary rounded-lg p-3 space-y-1">
-              <div className="flex justify-between"><span>Pool fee</span><span>{pair.base_fee_percentage}%</span></div>
-              <div className="flex justify-between"><span>Bin step</span><span>{pair.bin_step}</span></div>
+              <div className="flex justify-between"><span>Pool fee</span><span>{pair.pool_config.base_fee_pct}%</span></div>
+              <div className="flex justify-between"><span>Bin step</span><span>{pair.pool_config.bin_step}</span></div>
               <div className="flex justify-between"><span>Current APR</span><Badge className="text-xs bg-green-500/10 text-green-400 border-0 h-4">{(pair.apr * 100).toFixed(2)}%</Badge></div>
             </div>
 

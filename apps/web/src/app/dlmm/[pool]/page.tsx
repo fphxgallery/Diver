@@ -132,8 +132,8 @@ export default function PoolDetailPage() {
             <div>
               <h1 className="text-2xl font-semibold">{pair.name}</h1>
               <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary" className="text-xs">{pair.bin_step} step</Badge>
-                <Badge variant="secondary" className="text-xs">{pair.base_fee_percentage}% fee</Badge>
+                <Badge variant="secondary" className="text-xs">{pair.pool_config.bin_step} step</Badge>
+                <Badge variant="secondary" className="text-xs">{pair.pool_config.base_fee_pct}% fee</Badge>
                 <span className="text-xs text-muted-foreground font-mono">{poolAddress.slice(0, 8)}…</span>
               </div>
             </div>
@@ -146,9 +146,9 @@ export default function PoolDetailPage() {
         {/* Stats grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {[
-            { label: "TVL", value: formatLiquidity(pair.liquidity), icon: Droplets },
-            { label: "Volume 24h", value: formatVolume(pair.trade_volume_24h), icon: TrendingUp },
-            { label: "Fees 24h", value: formatVolume(pair.fees_24h), icon: Zap },
+            { label: "TVL", value: formatLiquidity(pair.tvl), icon: Droplets },
+            { label: "Volume 24h", value: formatVolume(pair.volume["24h"]), icon: TrendingUp },
+            { label: "Fees 24h", value: formatVolume(pair.fees["24h"]), icon: Zap },
             { label: "APR", value: formatApr(pair.apr), icon: Activity, highlight: true },
           ].map(({ label, value, icon: Icon, highlight }) => (
             <Card key={label} className={cn("p-4 border-border", highlight && "border-green-500/30")}>

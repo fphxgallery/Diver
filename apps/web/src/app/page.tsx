@@ -5,6 +5,7 @@ import { WalletHydrator } from "@/components/wallet/wallet-hydrator";
 import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
+import { getTopAprPairs, formatApr, formatLiquidity } from "@/lib/meteora/pools";
 import { Layers, Wallet, TrendingUp, DollarSign } from "lucide-react";
 import Link from "next/link";
 
@@ -39,6 +40,13 @@ export default function DashboardPage() {
     queryFn: () => getSolBalance(active!.publicKey),
     enabled: !!active,
     refetchInterval: 30_000,
+  });
+
+  const { data: topAprPairs, isLoading: aprLoading } = useQuery({
+    queryKey: ["top-apr-pairs"],
+    queryFn: () => getTopAprPairs(5),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
   });
 
   return (
@@ -95,9 +103,39 @@ export default function DashboardPage() {
                   <TrendingUp className="w-4 h-4 text-muted-foreground" />
                   Top APR Pools
                 </h2>
-                <p className="text-muted-foreground text-sm py-8 text-center">
-                  Coming in Phase 4
-                </p>
+                {aprLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-9 rounded-lg bg-secondary animate-pulse" />
+                    ))}
+                  </div>
+                ) : !topAprPairs?.length ? (
+                  <p className="text-muted-foreground text-sm py-8 text-center">No data available</p>
+                ) : (
+                  <div className="space-y-1">
+                    {topAprPairs.map((pair, i) => (
+                      <Link
+                        key={pair.address}
+                        href={`/dlmm/${pair.address}`}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-secondary transition-colors group"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-xs text-muted-foreground w-4 shrink-0">{i + 1}</span>
+                          <span className="text-sm font-medium truncate group-hover:text-primary transition-colors">{pair.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 ml-2">
+                          <span className="text-xs text-muted-foreground">{formatLiquidity(pair.tvl)}</span>
+                          <span className="text-sm font-semibold text-green-400">{formatApr(pair.apy)}</span>
+                        </div>
+                      </Link>
+                    ))}
+                    <div className="pt-1">
+                      <Link href="/dlmm" className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                        Browse all pools →
+                      </Link>
+                    </div>
+                  </div>
+                )}
               </Card>
             </div>
           </>
