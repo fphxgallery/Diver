@@ -32,17 +32,17 @@ export async function getTopPairs(limit = 50): Promise<DlmmPair[]> {
   return (data.data ?? []).filter(p => !p.is_blacklisted);
 }
 
-export async function getTopAprPairs(limit = 5): Promise<DlmmPair[]> {
-  // Fetch top-volume pools (established, real liquidity) then sort by APY client-side.
-  // Sorting by APR directly returns zero-TVL pools with overflow APY values.
+export async function getTopAprPairs(limit = 5, minTvl = 10_000): Promise<DlmmPair[]> {
+  // Fetch top-volume pools (established, real liquidity) then sort by fee/TVL client-side.
+  // Sorting by APR directly returns zero-TVL pools with overflow values.
   const res = await fetch(`${METEORA_API}/pools?page=1&page_size=100&sort_by=volume_24h:desc`, {
     next: { revalidate: 60 },
   });
   if (!res.ok) throw new Error("Failed to fetch top APR pairs");
   const data = await res.json() as PoolsResponse;
   return (data.data ?? [])
-    .filter(p => !p.is_blacklisted && p.tvl > 50_000 && p.apy < 100_000)
-    .sort((a, b) => b.apy - a.apy)
+    .filter(p => !p.is_blacklisted && p.tvl >= minTvl)
+    .sort((a, b) => b.fee_tvl_ratio["24h"] - a.fee_tvl_ratio["24h"])
     .slice(0, limit);
 }
 
@@ -61,8 +61,8 @@ export async function searchPairs(query: string): Promise<DlmmPair[]> {
   return (data.data ?? []).filter(p => !p.is_blacklisted);
 }
 
-export function formatApr(apy: number): string {
-  return `${apy.toFixed(2)}%`;
+export function formatFeeRatio(ratio: number): string {
+  return `${(ratio * 100).toFixed(2)}%`;
 }
 
 export function formatLiquidity(tvl: number): string {

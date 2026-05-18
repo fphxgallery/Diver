@@ -17,6 +17,7 @@ import {
   getBinRangeAroundActive,
   type BinData,
 } from "@/lib/meteora/positions";
+import { formatFeeRatio } from "@/lib/meteora/pools";
 import { signAndSendTransaction } from "@/lib/solana/send";
 import { cn } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
@@ -214,7 +215,7 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
             <div className="text-xs text-muted-foreground bg-secondary rounded-lg p-3 space-y-1">
               <div className="flex justify-between"><span>Pool fee</span><span>{pair.pool_config.base_fee_pct}%</span></div>
               <div className="flex justify-between"><span>Bin step</span><span>{pair.pool_config.bin_step}</span></div>
-              <div className="flex justify-between"><span>Current APR</span><Badge className="text-xs bg-green-500/10 text-green-400 border-0 h-4">{(pair.apr * 100).toFixed(2)}%</Badge></div>
+              <div className="flex justify-between"><span>Fee/TVL 24h</span><Badge className="text-xs bg-green-500/10 text-green-400 border-0 h-4">{formatFeeRatio(pair.fee_tvl_ratio["24h"])}</Badge></div>
             </div>
 
             {error && <p className="text-destructive text-sm">{error}</p>}

@@ -11,11 +11,12 @@ import { NewPositionDialog } from "@/components/dlmm/new-position-dialog";
 import { PositionCard } from "@/components/dlmm/position-card";
 import { useWalletStore } from "@/store/wallet-store";
 import { useDlmmStore } from "@/store/dlmm-store";
-import { getPair, formatApr, formatLiquidity, formatVolume, type DlmmPair } from "@/lib/meteora/pools";
+import { getPair, formatFeeRatio, formatLiquidity, formatVolume, type DlmmPair } from "@/lib/meteora/pools";
 import { getPoolBins, getUserPositions, isPositionInRange, type BinData, type PositionInfo } from "@/lib/meteora/positions";
 import { ArrowLeft, Plus, Droplets, TrendingUp, Zap, Activity } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { TokenLogo } from "@/components/dlmm/token-logo";
 
 interface UserPositionWithMeta extends PositionInfo {
   pairName: string;
@@ -107,8 +108,6 @@ export default function PoolDetailPage() {
     );
   }
 
-  const [tokenA, tokenB] = pair.name.split("-");
-
   return (
     <>
       <WalletHydrator />
@@ -122,12 +121,8 @@ export default function PoolDetailPage() {
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="flex -space-x-2">
-              <div className="w-10 h-10 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center font-bold text-primary">
-                {tokenA?.[0] ?? "?"}
-              </div>
-              <div className="w-10 h-10 rounded-full bg-secondary border-2 border-background flex items-center justify-center font-bold text-muted-foreground">
-                {tokenB?.[0] ?? "?"}
-              </div>
+              <TokenLogo mint={pair.token_x.address} symbol={pair.token_x.symbol} size={40} className="border-2 border-background" />
+              <TokenLogo mint={pair.token_y.address} symbol={pair.token_y.symbol} size={40} className="border-2 border-background" />
             </div>
             <div>
               <h1 className="text-2xl font-semibold">{pair.name}</h1>
@@ -149,7 +144,7 @@ export default function PoolDetailPage() {
             { label: "TVL", value: formatLiquidity(pair.tvl), icon: Droplets },
             { label: "Volume 24h", value: formatVolume(pair.volume["24h"]), icon: TrendingUp },
             { label: "Fees 24h", value: formatVolume(pair.fees["24h"]), icon: Zap },
-            { label: "APR", value: formatApr(pair.apr), icon: Activity, highlight: true },
+            { label: "Fee/TVL 24h", value: formatFeeRatio(pair.fee_tvl_ratio["24h"]), icon: Activity, highlight: true },
           ].map(({ label, value, icon: Icon, highlight }) => (
             <Card key={label} className={cn("p-4 border-border", highlight && "border-green-500/30")}>
               <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">

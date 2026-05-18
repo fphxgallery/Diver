@@ -43,6 +43,8 @@ export interface MonitorSettings {
   edgeProximityThresholdPct: number;
   /** Skip positions with total value below this (in token units, rough estimate) */
   minPositionValueUsd: number;
+  /** Hide pools with TVL below this threshold */
+  minPoolTvl: number;
   /** Default strategy for auto-rebalance */
   defaultStrategyType: StrategyType;
   /** Default number of bins for rebalanced positions */
@@ -55,6 +57,7 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   triggerOnOutOfRange: true,
   edgeProximityThresholdPct: 10,
   minPositionValueUsd: 10,
+  minPoolTvl: 20_000,
   defaultStrategyType: StrategyType.Spot,
   defaultNumBins: 20,
 };

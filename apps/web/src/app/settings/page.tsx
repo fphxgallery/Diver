@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useMonitorStore } from "@/store/monitor-store";
 import { StrategyType } from "@meteora-ag/dlmm";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Server, RefreshCw, Zap } from "lucide-react";
+import { CheckCircle2, Server, RefreshCw, Zap, Filter } from "lucide-react";
 
 const RPC_PRESETS = [
   { label: "Mainnet (public)", value: "https://api.mainnet-beta.solana.com" },
@@ -88,6 +88,38 @@ export default function SettingsPage() {
             <Button size="sm" onClick={persistRpc} variant="outline">Save</Button>
           </div>
           <p className="text-xs text-muted-foreground">Changes take effect on next page load. Use a private RPC for production.</p>
+        </div>
+      </Section>
+
+      {/* Pool Filters */}
+      <Section title="Pool Filters" icon={Filter}>
+        <div className="space-y-3">
+          <div>
+            <Label className="mb-2 block">Minimum TVL</Label>
+            <div className="flex gap-2 flex-wrap">
+              {[20_000, 50_000, 70_000, 100_000].map(v => (
+                <button key={v} onClick={() => saveSetting("minPoolTvl", v)}
+                  className={cn("px-3 py-1.5 rounded-lg text-sm transition-colors",
+                    settings.minPoolTvl === v ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"
+                  )}>
+                  {`$${v / 1_000}K`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Custom:</span>
+            <Input
+              type="number"
+              value={settings.minPoolTvl}
+              onChange={e => saveSetting("minPoolTvl", parseFloat(e.target.value) || 0)}
+              className="bg-secondary border-border w-32"
+              min={0}
+              step={1000}
+            />
+            <span className="text-sm text-muted-foreground">USD</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Hides pools below this TVL in the browse table and top pools dashboard.</p>
         </div>
       </Section>
 

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MiniSparkline } from "./bin-chart";
-import { formatApr, formatLiquidity, formatVolume, type DlmmPair } from "@/lib/meteora/pools";
+import { formatFeeRatio, formatLiquidity, formatVolume, type DlmmPair } from "@/lib/meteora/pools";
 import { TrendingUp, Droplets, Zap } from "lucide-react";
+import { TokenLogo } from "./token-logo";
 
 interface Props {
   pair: DlmmPair;
@@ -20,8 +21,7 @@ function fakeSparkline(seed: number): number[] {
 }
 
 export function PoolCard({ pair }: Props) {
-  const [tokenA, tokenB] = pair.name.split("-");
-  const aprNum = pair.apy;
+  const feeRatio24h = pair.fee_tvl_ratio["24h"];
   const sparkData = fakeSparkline(pair.tvl % 1000);
 
   return (
@@ -31,12 +31,8 @@ export function PoolCard({ pair }: Props) {
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="flex -space-x-1.5">
-              <div className="w-7 h-7 rounded-full bg-primary/20 border-2 border-card flex items-center justify-center text-xs font-bold text-primary">
-                {tokenA?.[0] ?? "?"}
-              </div>
-              <div className="w-7 h-7 rounded-full bg-secondary border-2 border-card flex items-center justify-center text-xs font-bold text-muted-foreground">
-                {tokenB?.[0] ?? "?"}
-              </div>
+              <TokenLogo mint={pair.token_x.address} symbol={pair.token_x.symbol} size={28} className="border-2 border-card" />
+              <TokenLogo mint={pair.token_y.address} symbol={pair.token_y.symbol} size={28} className="border-2 border-card" />
             </div>
             <div>
               <div className="font-semibold text-sm group-hover:text-primary transition-colors">{pair.name}</div>
@@ -44,7 +40,7 @@ export function PoolCard({ pair }: Props) {
             </div>
           </div>
           <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-400 border-0">
-            {aprNum.toFixed(1)}% APR
+            {formatFeeRatio(feeRatio24h)} Fee/TVL 24h
           </Badge>
         </div>
 

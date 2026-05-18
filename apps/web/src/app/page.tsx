@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { WalletHydrator } from "@/components/wallet/wallet-hydrator";
 import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
-import { getTopAprPairs, formatApr, formatLiquidity } from "@/lib/meteora/pools";
+import { getTopAprPairs, formatFeeRatio, formatLiquidity } from "@/lib/meteora/pools";
+import { useMonitorStore } from "@/store/monitor-store";
 import { Layers, Wallet, TrendingUp, DollarSign } from "lucide-react";
 import Link from "next/link";
 
@@ -34,6 +36,9 @@ function StatCard({ label, value, icon: Icon, href }: {
 export default function DashboardPage() {
   const { wallets, activeId, hydrated } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
+  const { settings, loadSettings } = useMonitorStore();
+
+  useEffect(() => { loadSettings(); }, [loadSettings]);
 
   const { data: balance } = useQuery({
     queryKey: ["balance", active?.publicKey],
@@ -43,8 +48,8 @@ export default function DashboardPage() {
   });
 
   const { data: topAprPairs, isLoading: aprLoading } = useQuery({
-    queryKey: ["top-apr-pairs"],
-    queryFn: () => getTopAprPairs(5),
+    queryKey: ["top-apr-pairs", settings.minPoolTvl],
+    queryFn: () => getTopAprPairs(5, settings.minPoolTvl),
     staleTime: 60_000,
     refetchInterval: 120_000,
   });
@@ -101,7 +106,7 @@ export default function DashboardPage() {
               <Card className="p-5 border-border">
                 <h2 className="font-medium mb-4 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                  Top APR Pools
+                  Top Pools by 24h Fee/TVL
                 </h2>
                 {aprLoading ? (
                   <div className="space-y-2">
@@ -125,7 +130,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex items-center gap-3 shrink-0 ml-2">
                           <span className="text-xs text-muted-foreground">{formatLiquidity(pair.tvl)}</span>
-                          <span className="text-sm font-semibold text-green-400">{formatApr(pair.apy)}</span>
+                          <span className="text-sm font-semibold text-green-400">{formatFeeRatio(pair.fee_tvl_ratio["24h"])}</span>
                         </div>
                       </Link>
                     ))}

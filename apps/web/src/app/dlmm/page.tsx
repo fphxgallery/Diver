@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,15 +12,18 @@ import { MonitorPanel } from "@/components/dlmm/monitor-panel";
 import { ServerMonitor } from "@/components/dlmm/server-monitor";
 import { useWalletStore } from "@/store/wallet-store";
 import { useDlmmStore } from "@/store/dlmm-store";
-import { formatLiquidity, formatVolume, type DlmmPair } from "@/lib/meteora/pools";
+import { useMonitorStore } from "@/store/monitor-store";
+import { formatLiquidity, formatVolume, formatFeeRatio, type DlmmPair } from "@/lib/meteora/pools";
 import { Search, Layers, Activity, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
 import Link from "next/link";
 
-type SortKey = "apy" | "tvl" | "volume" | "fees";
+
+type SortKey = "fee_tvl_24h" | "tvl" | "volume" | "fees";
 type SortDir = "asc" | "desc";
 
 function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
-  const [sortKey, setSortKey] = useState<SortKey>("apy");
+  const router = useRouter();
+  const [sortKey, setSortKey] = useState<SortKey>("fee_tvl_24h");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   function toggleSort(key: SortKey) {
@@ -28,8 +32,8 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
   }
 
   const sorted = [...pairs].sort((a, b) => {
-    const av = sortKey === "volume" ? a.volume["24h"] : sortKey === "fees" ? a.fees["24h"] : a[sortKey];
-    const bv = sortKey === "volume" ? b.volume["24h"] : sortKey === "fees" ? b.fees["24h"] : b[sortKey];
+    const av = sortKey === "volume" ? a.volume["24h"] : sortKey === "fees" ? a.fees["24h"] : sortKey === "fee_tvl_24h" ? a.fee_tvl_ratio["24h"] : a.tvl;
+    const bv = sortKey === "volume" ? b.volume["24h"] : sortKey === "fees" ? b.fees["24h"] : sortKey === "fee_tvl_24h" ? b.fee_tvl_ratio["24h"] : b.tvl;
     return sortDir === "desc" ? bv - av : av - bv;
   });
 
@@ -39,12 +43,13 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
   }
 
   function ColHeader({ k, label, className }: { k: SortKey; label: string; className?: string }) {
+    const isRight = className?.includes("text-right");
     return (
       <th
         className={`px-4 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap ${className ?? ""}`}
         onClick={() => toggleSort(k)}
       >
-        <span className="flex items-center gap-1"><SortIcon k={k} />{label}</span>
+        <span className={`flex items-center gap-1 ${isRight ? "justify-end" : ""}`}><SortIcon k={k} />{label}</span>
       </th>
     );
   }
@@ -56,7 +61,7 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
           <tr>
             <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-left">Pool</th>
             <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-left">Bin Step</th>
-            <ColHeader k="apy" label="APY" className="text-right" />
+            <ColHeader k="fee_tvl_24h" label="Fee/TVL 24h" className="text-right" />
             <ColHeader k="tvl" label="TVL" className="text-right" />
             <ColHeader k="volume" label="Vol 24h" className="text-right" />
             <ColHeader k="fees" label="Fees 24h" className="text-right" />
@@ -64,16 +69,14 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
         </thead>
         <tbody className="divide-y divide-border">
           {sorted.map(pair => (
-            <Link key={pair.address} href={`/dlmm/${pair.address}`} legacyBehavior>
-              <tr className="hover:bg-secondary/40 transition-colors cursor-pointer">
-                <td className="px-4 py-3 font-medium">{pair.name}</td>
-                <td className="px-4 py-3 text-muted-foreground">{pair.pool_config.bin_step}</td>
-                <td className="px-4 py-3 text-right font-semibold text-green-400">{pair.apy.toFixed(1)}%</td>
-                <td className="px-4 py-3 text-right text-muted-foreground">{formatLiquidity(pair.tvl)}</td>
-                <td className="px-4 py-3 text-right text-muted-foreground">{formatVolume(pair.volume["24h"])}</td>
-                <td className="px-4 py-3 text-right text-muted-foreground">{formatVolume(pair.fees["24h"])}</td>
-              </tr>
-            </Link>
+            <tr key={pair.address} onClick={() => router.push(`/dlmm/${pair.address}`)} className="hover:bg-secondary/40 transition-colors cursor-pointer">
+              <td className="px-4 py-3 font-medium">{pair.name}</td>
+              <td className="px-4 py-3 text-muted-foreground">{pair.pool_config.bin_step}</td>
+              <td className="px-4 py-3 text-right font-semibold text-green-400">{formatFeeRatio(pair.fee_tvl_ratio["24h"])}</td>
+              <td className="px-4 py-3 text-right text-muted-foreground">{formatLiquidity(pair.tvl)}</td>
+              <td className="px-4 py-3 text-right text-muted-foreground">{formatVolume(pair.volume["24h"])}</td>
+              <td className="px-4 py-3 text-right text-muted-foreground">{formatVolume(pair.fees["24h"])}</td>
+            </tr>
           ))}
         </tbody>
       </table>
@@ -87,22 +90,25 @@ export default function DlmmPage() {
   const { wallets, activeId, hydrated } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
   const { pairs, pairsLoading, pairsLoaded, loadPairs, getPositions, positions } = useDlmmStore();
+  const { settings, loadSettings } = useMonitorStore();
 
   const [tab, setTab] = useState<Tab>("pools");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState(pairs);
   const { searchPairs } = useDlmmStore();
 
-  useEffect(() => { loadPairs(); }, [loadPairs]);
+  useEffect(() => { loadPairs(); loadSettings(); }, [loadPairs, loadSettings]);
+
+  const filteredPairs = useMemo(() => pairs.filter(p => p.tvl >= settings.minPoolTvl), [pairs, settings.minPoolTvl]);
 
   useEffect(() => {
-    if (!search.trim()) { setSearchResults(pairs.slice(0, 50)); return; }
+    if (!search.trim()) { setSearchResults(filteredPairs.slice(0, 50)); return; }
     const t = setTimeout(async () => {
       const results = await searchPairs(search);
       setSearchResults(results);
     }, 300);
     return () => clearTimeout(t);
-  }, [search, pairs, searchPairs]);
+  }, [search, filteredPairs, searchPairs]);
 
   const userPositions = active ? getPositions(active.publicKey) : [];
   const inRangeCount = userPositions.filter(p => p.inRange).length;
