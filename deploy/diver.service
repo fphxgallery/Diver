@@ -1,0 +1,23 @@
+[Unit]
+Description=Diver — Solana wallet & Meteora DLMM manager
+After=network.target
+
+[Service]
+Type=simple
+User=diver
+Group=diver
+WorkingDirectory=/opt/diver/apps/web
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=diver
+EnvironmentFile=/opt/diver/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+Environment=NEXT_TELEMETRY_DISABLED=1
+
+[Install]
+WantedBy=multi-user.target
