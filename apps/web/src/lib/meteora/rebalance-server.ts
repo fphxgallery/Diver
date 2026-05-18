@@ -1,4 +1,4 @@
-import { PublicKey, VersionedTransaction, TransactionMessage } from "@solana/web3.js";
+import { Connection, PublicKey, VersionedTransaction, TransactionMessage } from "@solana/web3.js";
 import type { Keypair, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
@@ -8,8 +8,8 @@ import type { RebalanceSettings } from "./rebalance";
 const DEFAULTS: RebalanceSettings = {
   strategyType: StrategyType.Spot,
   numBins: 20,
-  xWithdrawBps: 10000,
-  yWithdrawBps: 10000,
+  xWithdrawBps: 0,
+  yWithdrawBps: 0,
   topUpX: new BN(0),
   topUpY: new BN(0),
   maxActiveBinSlippage: 3,
@@ -34,10 +34,13 @@ export async function executeRebalanceWithKeypair(params: {
   keypair: Keypair;
   settings?: Partial<RebalanceSettings>;
   cluster?: Cluster;
+  rpcUrl?: string;
 }): Promise<string[]> {
   const s: RebalanceSettings = { ...DEFAULTS, ...params.settings };
   const cluster = params.cluster ?? "mainnet-beta";
-  const connection = getConnection(cluster);
+  const connection = params.rpcUrl
+    ? new Connection(params.rpcUrl, "confirmed")
+    : getConnection(cluster);
   const pool = await DLMM.create(connection, new PublicKey(params.poolAddress));
 
   const { userPositions } = await pool.getPositionsByUserAndLbPair(params.keypair.publicKey);
@@ -67,12 +70,12 @@ export async function executeRebalanceWithKeypair(params: {
   const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {
     rebalancePosition: (
       response: unknown,
-      maxActiveBinSlippage: number
+      maxActiveBinSlippage: BN
     ) => Promise<{
       initBinArrayInstructions: TransactionInstruction[];
       rebalancePositionInstruction: TransactionInstruction[];
     }>;
-  }).rebalancePosition(rebalanceResponse, s.maxActiveBinSlippage);
+  }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
 
   const { blockhash } = await connection.getLatestBlockhash();
   const txBase64s: string[] = [];

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkPin } from "@/lib/server/auth";
 import { listUnlocked, updatePools, updateSettings } from "@/lib/server/key-store";
 import { getState, triggerCheckNow } from "@/lib/server/monitor-job";
+import { getAll } from "@/lib/server/key-store";
 import type { MonitorSettings } from "@/lib/meteora/monitor";
 
 export const runtime = "nodejs";
@@ -11,9 +12,16 @@ export async function GET(req: NextRequest) {
   const auth = checkPin(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
+  const unlocked = listUnlocked();
+  const settingsByWallet = getAll().map(e => ({
+    walletId: unlocked.find(u => u.publicKey === e.publicKey)?.walletId ?? "",
+    publicKey: e.publicKey,
+    settings: e.settings,
+  }));
   return NextResponse.json({
     ...getState(),
-    unlocked: listUnlocked(),
+    unlocked,
+    settingsByWallet,
   });
 }
 

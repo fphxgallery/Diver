@@ -124,20 +124,18 @@ export function computePositionHealth(
 }
 
 export function shouldAutoRebalance(health: PositionHealth, settings: MonitorSettings): string | null {
-  if (!settings.enabled) return null;
-
-  if (
-    settings.compositionCheckEnabled &&
-    health.xValueRatioPct !== -1 &&
-    (health.xValueRatioPct < settings.minXRatioPct || health.xValueRatioPct > settings.maxXRatioPct)
-  ) {
-    return null;
-  }
-
   if (settings.triggerOnOutOfRange && !health.inRange) {
+    if (
+      settings.compositionCheckEnabled &&
+      health.xValueRatioPct !== -1 &&
+      (health.xValueRatioPct < settings.minXRatioPct || health.xValueRatioPct > settings.maxXRatioPct)
+    ) {
+      return null;
+    }
     return "out_of_range";
   }
 
+  // Skip composition check for edge proximity — a drifting position is expected to be one-sided
   if (
     settings.edgeProximityThresholdPct > 0 &&
     health.inRange &&

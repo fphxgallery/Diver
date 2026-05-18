@@ -93,9 +93,10 @@ export async function buildSplTransfer(params: {
 export async function signAndSendTransactionWithKeypair(
   txBase64: string,
   keypair: Keypair,
-  cluster: Cluster = "mainnet-beta"
+  cluster: Cluster = "mainnet-beta",
+  rpcUrl?: string
 ): Promise<string> {
-  const connection = getConnection(cluster);
+  const connection = rpcUrl ? new Connection(rpcUrl, "confirmed") : getConnection(cluster);
   const txBytes = Buffer.from(txBase64, "base64");
   const tx = VersionedTransaction.deserialize(txBytes);
   tx.sign([keypair]);

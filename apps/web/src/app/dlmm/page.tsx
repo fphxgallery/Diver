@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WalletHydrator } from "@/components/wallet/wallet-hydrator";
 import { PositionCard } from "@/components/dlmm/position-card";
-import { MonitorPanel } from "@/components/dlmm/monitor-panel";
 import { ServerMonitor } from "@/components/dlmm/server-monitor";
 import { useWalletStore } from "@/store/wallet-store";
 import { useDlmmStore } from "@/store/dlmm-store";
@@ -221,7 +220,6 @@ export default function DlmmPage() {
 
         {tab === "monitor" && (
           <div className="space-y-4">
-            <MonitorPanel />
             <ServerMonitor />
           </div>
         )}

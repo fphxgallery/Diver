@@ -33,8 +33,8 @@ export interface RebalanceSettings {
 const DEFAULTS: RebalanceSettings = {
   strategyType: StrategyType.Spot,
   numBins: 20,
-  xWithdrawBps: 10000,
-  yWithdrawBps: 10000,
+  xWithdrawBps: 0,
+  yWithdrawBps: 0,
   topUpX: new BN(0),
   topUpY: new BN(0),
   maxActiveBinSlippage: 3,
@@ -161,14 +161,14 @@ export async function executeRebalance(params: {
   const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {
     rebalancePosition: (
       response: unknown,
-      maxActiveBinSlippage: number,
+      maxActiveBinSlippage: BN,
       rentPayer?: PublicKey,
       slippage?: number
     ) => Promise<{
       initBinArrayInstructions: import("@solana/web3.js").TransactionInstruction[];
       rebalancePositionInstruction: import("@solana/web3.js").TransactionInstruction[];
     }>;
-  }).rebalancePosition(rebalancePositionResponse, s.maxActiveBinSlippage);
+  }).rebalancePosition(rebalancePositionResponse, new BN(s.maxActiveBinSlippage));
 
   const { blockhash } = await connection.getLatestBlockhash();
   const txBase64s: string[] = [];

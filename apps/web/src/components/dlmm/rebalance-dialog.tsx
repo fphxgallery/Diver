@@ -36,7 +36,7 @@ const BIN_COUNTS = [10, 20, 40, 69];
 export function RebalanceDialog({ open, onClose, positionKey, poolAddress, pairName, lowerBinId, upperBinId }: Props) {
   const { wallets, activeId } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
-  const { addHistory, settings } = useMonitorStore();
+  const { settings } = useMonitorStore();
 
   const [strategyType, setStrategyType] = useState<StrategyType>(
     settings.defaultStrategyType ?? StrategyType.Spot
@@ -66,16 +66,6 @@ export function RebalanceDialog({ open, onClose, positionKey, poolAddress, pairN
     }
 
     setTxSigs(sigs);
-    addHistory({
-      id: `${Date.now()}-${positionKey.slice(0, 8)}`,
-      positionKey,
-      poolAddress,
-      pairName,
-      triggeredAt: Date.now(),
-      reason: "manual",
-      txSigs: sigs,
-      success: true,
-    });
     setSignOpen(false);
   }
 

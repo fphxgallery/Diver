@@ -3,6 +3,7 @@ import { getUserPositions } from "@/lib/meteora/positions";
 import { computePositionHealth, shouldAutoRebalance } from "@/lib/meteora/monitor";
 import { executeRebalanceWithKeypair } from "@/lib/meteora/rebalance-server";
 import { signAndSendTransactionWithKeypair } from "@/lib/solana/send";
+import { addLog } from "./server-log";
 import type { PositionHealth, RebalanceRecord } from "@/lib/meteora/monitor";
 
 export interface ServerMonitorState {
@@ -45,6 +46,8 @@ async function runCheck() {
   state.error = null;
   const newHealth: PositionHealth[] = [];
 
+  addLog("info", "monitor.check.start", `Check started — ${entries.length} wallet(s)`, { wallets: entries.length });
+
   try {
     for (const entry of entries) {
       if (entry.poolAddresses.length === 0) continue;
@@ -53,6 +56,7 @@ async function runCheck() {
         entry.poolAddresses.map(async (poolAddr) => {
           try {
             const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, entry.publicKey, "mainnet-beta", entry.rpcUrl);
+            addLog("info", "monitor.pool.check", `${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} — ${userPositions.length} position(s)`, { pool: poolAddr, positions: userPositions.length });
             for (const pos of userPositions) {
               const h = computePositionHealth(pos, activeBinId, entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8), {
                 pricePerToken: activeBinPricePerToken,
@@ -61,9 +65,10 @@ async function runCheck() {
               });
               newHealth.push(h);
 
-              if (!entry.settings.enabled) continue;
               const reason = shouldAutoRebalance(h, entry.settings);
               if (!reason) continue;
+
+              addLog("warn", "rebalance.trigger", `Rebalance triggered — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${reason}) rpc=${entry.rpcUrl?.slice(0, 40)}`, { pool: poolAddr, reason, position: pos.publicKey.slice(0, 8) });
 
               let txSigs: string[] = [];
               let success = false;
@@ -74,19 +79,22 @@ async function runCheck() {
                   poolAddress: poolAddr,
                   positionKey: pos.publicKey,
                   keypair: entry.keypair,
+                  rpcUrl: entry.rpcUrl,
                   settings: {
                     strategyType: entry.settings.defaultStrategyType,
                     numBins: entry.settings.defaultNumBins,
                   },
                 });
                 for (const tx of txBase64s) {
-                  const sig = await signAndSendTransactionWithKeypair(tx, entry.keypair);
+                  const sig = await signAndSendTransactionWithKeypair(tx, entry.keypair, "mainnet-beta", entry.rpcUrl);
                   txSigs.push(sig);
                 }
                 success = true;
                 h.autoRebalanceTriggered = true;
+                addLog("info", "rebalance.success", `Rebalance succeeded — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${txSigs.length} tx)`, { txs: txSigs.length, pool: poolAddr });
               } catch (e) {
                 error = e instanceof Error ? e.message : "Rebalance failed";
+                addLog("error", "rebalance.error", `Rebalance failed — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}`, { pool: poolAddr });
               }
 
               const record: RebalanceRecord = {
@@ -103,7 +111,9 @@ async function runCheck() {
               state.history = [record, ...state.history].slice(0, MAX_HISTORY);
             }
           } catch (e) {
-            console.error(`[diver] runCheck failed for pool ${poolAddr}:`, e instanceof Error ? e.message : e);
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error(`[diver] runCheck failed for pool ${poolAddr}:`, msg);
+            addLog("error", "monitor.pool.error", `Pool check failed — ${poolAddr.slice(0, 8)}: ${msg}`, { pool: poolAddr });
           }
         })
       );
@@ -111,8 +121,10 @@ async function runCheck() {
 
     state.health = newHealth;
     state.lastRunAt = Date.now();
+    addLog("info", "monitor.check.complete", `Check complete — ${newHealth.length} position(s)`, { positions: newHealth.length });
   } catch (e) {
     state.error = e instanceof Error ? e.message : "Monitor check failed";
+    addLog("error", "monitor.check.error", `Check failed: ${state.error}`);
   } finally {
     state.running = false;
   }
@@ -129,6 +141,7 @@ function scheduleNext() {
 
 export function startServerMonitor() {
   if (pollTimer) return;
+  addLog("info", "monitor.start", "Server monitor started");
   runCheck();
   scheduleNext();
   console.log("[diver] Server monitor started");

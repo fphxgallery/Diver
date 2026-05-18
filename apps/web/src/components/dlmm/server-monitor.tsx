@@ -24,6 +24,7 @@ interface MonitorStatus {
   lastRunAt: number | null;
   error: string | null;
   unlocked: Array<{ walletId: string; publicKey: string; expiresAt: number }>;
+  settingsByWallet?: Array<{ walletId: string; publicKey: string; settings: import("@/lib/meteora/monitor").MonitorSettings }>;
 }
 
 function useServerMonitor(pollInterval = 15_000) {
@@ -355,6 +356,30 @@ export function ServerMonitor() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(status?.settingsByWallet?.length ?? 0) > 0 && (
+              <div className="border-t border-border p-4">
+                <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Server Settings</h3>
+                {status!.settingsByWallet!.map(sw => {
+                  const s = sw.settings;
+                  const flags = [
+                    { label: "OOR trigger", ok: s.triggerOnOutOfRange },
+                    { label: `Edge ${s.edgeProximityThresholdPct}%`, ok: s.edgeProximityThresholdPct > 0 },
+                    { label: "Composition", ok: s.compositionCheckEnabled },
+                  ];
+                  return (
+                    <div key={sw.walletId} className="flex flex-wrap gap-1.5 text-xs">
+                      {flags.map(f => (
+                        <span key={f.label} className={cn("px-1.5 py-0.5 rounded font-mono",
+                          f.ok ? "bg-green-500/15 text-green-400" : "bg-secondary text-muted-foreground"
+                        )}>{f.label}</span>
+                      ))}
+                      <span className="text-muted-foreground ml-1">Bins: {s.defaultNumBins} · Min $: {s.minPositionValueUsd}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
 

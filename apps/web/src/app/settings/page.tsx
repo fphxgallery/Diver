@@ -47,7 +47,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSettings();
-    setRpcUrl(process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.mainnet-beta.solana.com");
+    const storedRpc = typeof window !== "undefined" ? localStorage.getItem("diver:rpc-url") : null;
+    setRpcUrl(storedRpc ?? process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.mainnet-beta.solana.com");
   }, [loadSettings]);
 
   function persistRpc() {
@@ -124,28 +125,8 @@ export default function SettingsPage() {
       </Section>
 
       {/* Monitor */}
-      <Section title="Position Monitor" icon={RefreshCw}>
+      <Section title="Server Monitor" icon={RefreshCw}>
         <div className="space-y-4">
-          {/* Enable toggle */}
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium">Auto-Monitor</div>
-              <div className="text-xs text-muted-foreground">Poll positions while the app is open</div>
-            </div>
-            <button
-              onClick={() => saveSetting("enabled", !settings.enabled)}
-              className={cn("w-10 h-6 rounded-full transition-colors relative",
-                settings.enabled ? "bg-primary" : "bg-secondary border border-border"
-              )}>
-              <span className={cn("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm",
-                settings.enabled && "translate-x-4"
-              )} />
-            </button>
-          </div>
-
-          <Separator />
-
-          {/* Interval */}
           <div>
             <Label className="mb-2 block">Check Interval</Label>
             <div className="flex gap-2">
@@ -210,7 +191,7 @@ export default function SettingsPage() {
               </span>
             </Label>
             <div className="flex gap-2 items-center">
-              {[0, 5, 10, 15].map(v => (
+              {[0, 5, 10, 15, 20, 25, 30].map(v => (
                 <button key={v} onClick={() => saveSetting("edgeProximityThresholdPct", v)}
                   className={cn("px-3 py-1 rounded-lg text-sm transition-colors",
                     settings.edgeProximityThresholdPct === v ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"
@@ -320,7 +301,7 @@ export default function SettingsPage() {
           )}
 
           <div className="text-xs text-muted-foreground bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
-            ⚠ Auto-rebalance requires your wallet password to be cached in memory for the session. You will be prompted to enter it before each rebalance unless you cache it.
+            ⚠ Auto-rebalance runs server-side using the keypair unlocked in Server Monitor. Unlock your wallet there to enable automatic rebalancing.
           </div>
         </div>
       </Section>
