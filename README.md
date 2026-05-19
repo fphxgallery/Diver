@@ -82,6 +82,8 @@ The server monitor runs inside the Next.js process and keeps checking your posit
 5. Check interval respects Settings → Check Interval (minimum 60s server-side to avoid rate limits)
 6. The key stays active until you click **Lock** or the server restarts — no TTL expiry
 
+**Optional persistence across restarts:** Set `DIVER_SERVER_SECRET` (32 bytes / 64 hex chars — generate with `openssl rand -hex 32`) in `.env` and the server will encrypt the seed at rest under that key in `${DIVER_DATA_DIR:-./data}/monitor-keys.json`, auto-loading on next boot so auto-rebalance survives restarts. Leave unset to keep the key memory-only.
+
 ## Systemd (VPS/server)
 
 ```bash
@@ -93,7 +95,8 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 ## Security notes
 
 - Private keys never leave the browser unencrypted. AES-256-GCM encryption happens client-side; the password never touches the server.
-- Server monitor: only a 32-byte seed is sent over HTTPS. The keypair is held in server memory only — never written to disk — and zeroed on lock or server restart.
+- Server monitor: only a 32-byte seed is sent over HTTPS. By default the keypair is held in server memory only — never written to disk — and zeroed on lock or server restart.
+- **Optional seed-at-rest:** if `DIVER_SERVER_SECRET` is set, seeds are AES-256-GCM encrypted under that secret and stored on disk so auto-rebalance survives restarts. **Caveat:** if the secret lives in the same `.env` next to the encrypted blob, an attacker with disk access has both — this protects against backup/snapshot leaks, not full host compromise. For real defense-in-depth, inject `DIVER_SERVER_SECRET` from a secret manager (Docker secret, systemd `LoadCredential=`, KMS, prompt-at-boot) rather than committing it to `.env`.
 - LP Agent API key and Jupiter API key are stored in `sessionStorage` (cleared on browser close), not persisted to disk.
 - Use a private RPC endpoint in production to avoid rate limits and improve reliability.
 

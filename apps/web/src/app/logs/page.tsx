@@ -82,7 +82,7 @@ export default function LogsPage() {
   };
 
   return (
-    <div className="flex-1 p-6 space-y-4">
+    <div className="flex-1 pt-32 px-6 pb-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <ScrollText className="w-5 h-5 text-muted-foreground" />

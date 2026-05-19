@@ -1,5 +1,6 @@
 import { Keypair } from "@solana/web3.js";
 import type { MonitorSettings } from "@/lib/meteora/monitor";
+import { persistEntry, updatePersistedMeta, removePersistedEntry } from "./persisted-store";
 
 export interface KeyEntry {
   keypair: Keypair;
@@ -25,6 +26,19 @@ if (cleanup.unref) cleanup.unref();
 
 export function setKey(walletId: string, entry: Omit<KeyEntry, "expiresAt">) {
   store.set(walletId, { ...entry, expiresAt: Infinity });
+  const seed = entry.keypair.secretKey.slice(0, 32);
+  persistEntry(walletId, seed, {
+    publicKey: entry.publicKey,
+    poolAddresses: entry.poolAddresses,
+    pairNames: entry.pairNames,
+    rpcUrl: entry.rpcUrl,
+    settings: entry.settings,
+  }).catch(e => console.error("[diver] Failed to persist key entry:", e));
+}
+
+// Used by boot hydration — entry came from disk, skip re-persist.
+export function setKeyInMemory(walletId: string, entry: Omit<KeyEntry, "expiresAt">) {
+  store.set(walletId, { ...entry, expiresAt: Infinity });
 }
 
 export function getKey(walletId: string): KeyEntry | null {
@@ -40,9 +54,9 @@ export function getKey(walletId: string): KeyEntry | null {
 export function clearKey(walletId: string) {
   const entry = store.get(walletId);
   if (entry) {
-    // Zero out the secret key bytes before GC
     entry.keypair.secretKey.fill(0);
     store.delete(walletId);
+    removePersistedEntry(walletId).catch(e => console.error("[diver] Failed to remove persisted entry:", e));
   }
 }
 
@@ -55,12 +69,16 @@ export function updatePools(walletId: string, poolAddresses: string[], pairNames
   if (entry) {
     entry.poolAddresses = poolAddresses;
     entry.pairNames = pairNames;
+    updatePersistedMeta(walletId, { poolAddresses, pairNames }).catch(e => console.error("[diver] Failed to persist pool update:", e));
   }
 }
 
 export function updateSettings(walletId: string, settings: MonitorSettings) {
   const entry = store.get(walletId);
-  if (entry) entry.settings = settings;
+  if (entry) {
+    entry.settings = settings;
+    updatePersistedMeta(walletId, { settings }).catch(e => console.error("[diver] Failed to persist settings update:", e));
+  }
 }
 
 export function listUnlocked(): Array<{ walletId: string; publicKey: string; expiresAt: number }> {

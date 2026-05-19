@@ -162,7 +162,7 @@ export default function DlmmPage() {
       <WalletHydrator />
       <div className="p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 max-w-4xl mx-auto">
           <div>
             <h1 className="text-2xl font-semibold">DLMM</h1>
             <p className="text-muted-foreground text-sm mt-0.5">Meteora Dynamic Liquidity Market Maker</p>
@@ -291,7 +291,7 @@ export default function DlmmPage() {
         )}
 
         {tab === "positions" && (
-          <div>
+          <div className="max-w-4xl mx-auto">
             {!hydrated || !active ? (
               <Card className="p-12 text-center border-border">
                 <p className="text-muted-foreground mb-3">No wallet selected</p>
@@ -316,7 +316,7 @@ export default function DlmmPage() {
         )}
 
         {tab === "monitor" && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-w-4xl mx-auto">
             <ServerMonitor />
           </div>
         )}

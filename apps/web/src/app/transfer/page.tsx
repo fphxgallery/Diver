@@ -75,7 +75,7 @@ export default function TransferPage() {
   return (
     <>
       <WalletHydrator />
-      <div className="px-6 pt-16 pb-6 flex justify-center">
+      <div className="px-6 pt-32 pb-6 flex justify-center">
         <div className="w-full max-w-md space-y-4">
           <h1 className="text-2xl font-semibold mb-2">Transfer</h1>
 

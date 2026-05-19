@@ -17,7 +17,7 @@ export default function WalletsPage() {
   return (
     <>
       <WalletHydrator />
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="pt-32 px-6 pb-6 max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-semibold">Wallets</h1>

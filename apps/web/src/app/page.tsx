@@ -160,7 +160,7 @@ export default function DashboardPage() {
   return (
     <>
       <WalletHydrator />
-      <div className="p-6 max-w-5xl mx-auto">
+      <div className="pt-32 px-6 pb-6 max-w-5xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           {active && (

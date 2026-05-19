@@ -81,17 +81,7 @@ export async function executeRebalanceWithKeypair(params: {
     throw e;
   }
 
-  const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {
-    rebalancePosition: (
-      response: unknown,
-      maxActiveBinSlippage: BN
-    ) => Promise<{
-      initBinArrayInstructions: TransactionInstruction[];
-      rebalancePositionInstruction: TransactionInstruction[];
-    }>;
-  }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
-
-  // Ensure ATAs exist before simulation — missing ATA causes rebalancePosition simulation to fail
+  // Create missing ATAs before rebalancePosition — it simulates on-chain and will fail if ATAs don't exist
   const { tokenXProgram, tokenYProgram } = getTokenProgramId(pool.lbPair);
   const [ataX, ataY] = await Promise.all([
     getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
@@ -99,7 +89,6 @@ export async function executeRebalanceWithKeypair(params: {
   ]);
   const ataInstructions = [ataX.ix, ataY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
 
-  // If any ATAs are missing, create them on-chain now so rebalancePosition simulation succeeds
   if (ataInstructions.length > 0) {
     const { blockhash: ataBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     const ataTx = new VersionedTransaction(
@@ -113,6 +102,16 @@ export async function executeRebalanceWithKeypair(params: {
     const ataSig = await connection.sendRawTransaction(ataTx.serialize(), { skipPreflight: false, maxRetries: 3 });
     await connection.confirmTransaction({ signature: ataSig, blockhash: ataBlockhash, lastValidBlockHeight }, "confirmed");
   }
+
+  const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {
+    rebalancePosition: (
+      response: unknown,
+      maxActiveBinSlippage: BN
+    ) => Promise<{
+      initBinArrayInstructions: TransactionInstruction[];
+      rebalancePositionInstruction: TransactionInstruction[];
+    }>;
+  }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
 
   const { blockhash } = await connection.getLatestBlockhash();
   const txBase64s: string[] = [];
