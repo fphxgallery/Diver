@@ -1,4 +1,4 @@
-import { Connection, PublicKey, VersionedTransaction, TransactionMessage } from "@solana/web3.js";
+import { Connection, PublicKey, VersionedTransaction, TransactionMessage, SendTransactionError } from "@solana/web3.js";
 import type { Keypair, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
 import DLMM, { StrategyType, getOrCreateATAInstruction, getTokenProgramId } from "@meteora-ag/dlmm";
@@ -47,25 +47,39 @@ export async function executeRebalanceWithKeypair(params: {
   const position = userPositions.find(p => p.publicKey.toBase58() === params.positionKey);
   if (!position) throw new Error("Position not found");
 
-  const rebalanceResponse = await (pool as unknown as {
-    simulateRebalancePositionWithBalancedStrategy: (
-      positionAddress: PublicKey,
-      positionData: unknown,
-      strategy: StrategyType,
-      topUpX: BN,
-      topUpY: BN,
-      xWithdrawBps: BN,
-      yWithdrawBps: BN
-    ) => Promise<unknown>;
-  }).simulateRebalancePositionWithBalancedStrategy(
-    position.publicKey,
-    position.positionData,
-    s.strategyType,
-    s.topUpX,
-    s.topUpY,
-    new BN(s.xWithdrawBps),
-    new BN(s.yWithdrawBps)
-  );
+  let rebalanceResponse: unknown;
+  try {
+    rebalanceResponse = await (pool as unknown as {
+      simulateRebalancePositionWithBalancedStrategy: (
+        positionAddress: PublicKey,
+        positionData: unknown,
+        strategy: StrategyType,
+        topUpX: BN,
+        topUpY: BN,
+        xWithdrawBps: BN,
+        yWithdrawBps: BN
+      ) => Promise<unknown>;
+    }).simulateRebalancePositionWithBalancedStrategy(
+      position.publicKey,
+      position.positionData,
+      s.strategyType,
+      s.topUpX,
+      s.topUpY,
+      new BN(s.xWithdrawBps),
+      new BN(s.yWithdrawBps)
+    );
+  } catch (e) {
+    if (e instanceof SendTransactionError) {
+      const logs = e.logs ?? await e.getLogs(connection).catch(() => undefined);
+      if (logs?.some(l => l.includes("insufficient funds"))) {
+        const xSym = pool.tokenX.mint.address.toBase58().slice(0, 8);
+        const ySym = pool.tokenY.mint.address.toBase58().slice(0, 8);
+        throw new Error(`Rebalance skipped: wallet lacks tokens for deposit (${xSym}… / ${ySym}…). Position is likely single-sided — wallet needs both tokens to rebalance into a balanced range.`);
+      }
+      throw new Error(`Simulation failed. Logs:\n${logs?.join("\n") ?? e.message}`);
+    }
+    throw e;
+  }
 
   const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {
     rebalancePosition: (

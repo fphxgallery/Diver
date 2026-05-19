@@ -6,6 +6,7 @@ import {
   PublicKey,
   TransactionMessage,
   LAMPORTS_PER_SOL,
+  SendTransactionError,
 } from "@solana/web3.js";
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { getConnection, walletToKeypair, type Cluster } from "@/lib/meteora/web3-compat-boundary";
@@ -112,15 +113,23 @@ export async function signAndSendTransactionWithKeypair(
   const tx = VersionedTransaction.deserialize(txBytes);
   tx.sign([keypair]);
 
-  const sig = await connection.sendRawTransaction(tx.serialize(), {
-    skipPreflight: false,
-    maxRetries: 3,
-  });
+  try {
+    const sig = await connection.sendRawTransaction(tx.serialize(), {
+      skipPreflight: false,
+      maxRetries: 3,
+    });
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
 
-  return sig;
+    return sig;
+  } catch (e) {
+    if (e instanceof SendTransactionError) {
+      const logs = e.logs ?? await e.getLogs(connection).catch(() => undefined);
+      throw new Error(`Transaction failed. Logs:\n${logs?.join("\n") ?? e.message}`);
+    }
+    throw e;
+  }
 }
 
 export async function simulateTx(

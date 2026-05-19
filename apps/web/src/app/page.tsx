@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { WalletHydrator } from "@/components/wallet/wallet-hydrator";
 import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
 import { getTopAprPairs, formatFeeRatio, formatLiquidity } from "@/lib/meteora/pools";
-import { getOpeningPositions, getTokenBalances } from "@/lib/meteora/lpagent";
+import { getOpeningPositions, getTokenBalances, getRevenueForPeriod } from "@/lib/meteora/lpagent";
 import { useMonitorStore } from "@/store/monitor-store";
 import { useDlmmStore } from "@/store/dlmm-store";
 import { Layers, Wallet, TrendingUp, DollarSign } from "lucide-react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 
-function StatCard({ label, value, icon: Icon, href }: {
+function StatCard({ label, value, sub, icon: Icon, href }: {
   label: string;
   value: string;
+  sub?: string;
   icon: React.ElementType;
   href?: string;
 }) {
@@ -25,6 +27,7 @@ function StatCard({ label, value, icon: Icon, href }: {
         <div>
           <p className="text-muted-foreground text-sm">{label}</p>
           <p className="text-2xl font-semibold mt-1">{value}</p>
+          {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
         </div>
         <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center">
           <Icon className="w-5 h-5 text-muted-foreground" />
@@ -33,6 +36,45 @@ function StatCard({ label, value, icon: Icon, href }: {
     </Card>
   );
   return href ? <Link href={href}>{content}</Link> : content;
+}
+
+type FeesPeriod = "7D" | "1M";
+
+function FeesCard({ value, loading, period, onPeriod }: {
+  value: string;
+  loading: boolean;
+  period: FeesPeriod;
+  onPeriod: (p: FeesPeriod) => void;
+}) {
+  return (
+    <Card className="p-5 bg-card border-border">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-muted-foreground text-sm">Fees Earned</p>
+            <div className="flex items-center gap-0.5">
+              {(["7D", "1M"] as FeesPeriod[]).map(p => (
+                <button
+                  key={p}
+                  onClick={() => onPeriod(p)}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded text-xs font-medium transition-colors",
+                    period === p ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-2xl font-semibold">{loading ? "..." : value}</p>
+        </div>
+        <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+          <TrendingUp className="w-5 h-5 text-muted-foreground" />
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 export default function DashboardPage() {
@@ -51,6 +93,7 @@ export default function DashboardPage() {
   const userPositions = active ? getPositions(active.publicKey) : [];
 
   const hasApiKey = !!active && !!settings.lpAgentApiKey;
+  const [feesPeriod, setFeesPeriod] = useState<FeesPeriod>("7D");
 
   const { data: lpPositions, isPending: lpPending } = useQuery({
     queryKey: ["lp-positions-financial", active?.publicKey, settings.lpAgentApiKey],
@@ -68,16 +111,43 @@ export default function DashboardPage() {
     refetchInterval: 120_000,
   });
 
+  const { data: fees7d, isPending: fees7dPending } = useQuery({
+    queryKey: ["revenue-7d", active?.publicKey, settings.lpAgentApiKey],
+    queryFn: () => getRevenueForPeriod(active!.publicKey, settings.lpAgentApiKey, "7D"),
+    enabled: hasApiKey && feesPeriod === "7D",
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: fees1m, isPending: fees1mPending } = useQuery({
+    queryKey: ["revenue-1m", active?.publicKey, settings.lpAgentApiKey],
+    queryFn: () => getRevenueForPeriod(active!.publicKey, settings.lpAgentApiKey, "1M"),
+    enabled: hasApiKey && feesPeriod === "1M",
+    staleTime: 5 * 60_000,
+  });
+
+  const feesValue = feesPeriod === "7D" ? fees7d : fees1m;
+  const feesLoading = feesPeriod === "7D" ? fees7dPending : fees1mPending;
+
   const totalPositionValue = lpPositions?.reduce((sum, p) => sum + Number(p.currentValue ?? 0), 0) ?? 0;
   const totalWalletValue = tokenBalances?.reduce((sum, t) => sum + Number(t.balanceInUsd ?? 0), 0) ?? 0;
   const totalValue = totalPositionValue + totalWalletValue;
-  const fees24h = lpPositions?.reduce((sum, p) => sum + Number(p.yield24h ?? 0), 0) ?? 0;
 
   const { data: balance } = useQuery({
     queryKey: ["balance", active?.publicKey],
     queryFn: () => getSolBalance(active!.publicKey),
     enabled: !!active,
     refetchInterval: 30_000,
+  });
+
+  const { data: solPrice } = useQuery({
+    queryKey: ["sol-price"],
+    queryFn: async () => {
+      const res = await fetch("https://lite-api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112");
+      const json = await res.json();
+      return json.data?.["So11111111111111111111111111111111111111112"]?.price as number | undefined;
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   const { data: topAprPairs, isLoading: aprLoading } = useQuery({
@@ -117,6 +187,9 @@ export default function DashboardPage() {
               <StatCard
                 label="SOL Balance"
                 value={balance !== undefined ? `${balance.toFixed(4)}` : "—"}
+                sub={solPrice !== undefined && balance !== undefined
+                  ? `≈ $${(balance * solPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · $${solPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/SOL`
+                  : undefined}
                 icon={Wallet}
                 href="/wallets"
               />
@@ -126,10 +199,11 @@ export default function DashboardPage() {
                 value={!hasApiKey ? "—" : lpPending ? "..." : `$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 icon={DollarSign}
               />
-              <StatCard
-                label="24h Fees Earned"
-                value={!hasApiKey ? "—" : lpPending ? "..." : `$${fees24h.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                icon={TrendingUp}
+              <FeesCard
+                value={!hasApiKey ? "—" : feesValue !== undefined ? `$${feesValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                loading={hasApiKey && feesLoading && feesValue === undefined}
+                period={feesPeriod}
+                onPeriod={setFeesPeriod}
               />
             </div>
 

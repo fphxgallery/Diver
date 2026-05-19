@@ -13,14 +13,36 @@ import { useWalletStore } from "@/store/wallet-store";
 import { useDlmmStore } from "@/store/dlmm-store";
 import { useMonitorStore } from "@/store/monitor-store";
 import { formatLiquidity, formatVolume, formatFeeRatio, type DlmmPair } from "@/lib/meteora/pools";
-import { Search, Layers, Activity, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, Layers, Activity, AlertTriangle, ChevronUp, ChevronDown, Star, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
+
+function useFavoritePools() {
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("diver:favorite-pools");
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch { return new Set(); }
+  });
+
+  function toggle(address: string) {
+    setFavorites(prev => {
+      const next = new Set(prev);
+      if (next.has(address)) next.delete(address);
+      else next.add(address);
+      localStorage.setItem("diver:favorite-pools", JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  return { favorites, toggle };
+}
 
 type SortKey = "fee_tvl_24h" | "tvl" | "volume" | "fees";
 type SortDir = "asc" | "desc";
 
-function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
+function PoolTable({ pairs, favorites, onToggleFavorite }: { pairs: DlmmPair[]; favorites: Set<string>; onToggleFavorite: (address: string) => void }) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState<SortKey>("fee_tvl_24h");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -58,6 +80,7 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
       <table className="w-full text-sm">
         <thead className="bg-secondary/60 border-b border-border">
           <tr>
+            <th className="px-2 py-2.5 w-8" />
             <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Pool</th>
             <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Bin Step</th>
             <ColHeader k="fee_tvl_24h" label="Fee/TVL 24h" className="text-right" />
@@ -69,6 +92,14 @@ function PoolTable({ pairs }: { pairs: DlmmPair[] }) {
         <tbody className="divide-y divide-border">
           {sorted.map(pair => (
             <tr key={pair.address} onClick={() => router.push(`/dlmm/${pair.address}`)} className="hover:bg-secondary/40 transition-colors cursor-pointer">
+              <td className="px-2 py-2 w-8">
+                <button
+                  onClick={e => { e.stopPropagation(); onToggleFavorite(pair.address); }}
+                  className="text-muted-foreground hover:text-yellow-400 transition-colors"
+                >
+                  <Star className={cn("w-3.5 h-3.5", favorites.has(pair.address) && "fill-yellow-400 text-yellow-400")} />
+                </button>
+              </td>
               <td className="px-3 py-2 font-medium">{pair.name}</td>
               <td className="px-3 py-2 text-muted-foreground">{pair.pool_config.bin_step}</td>
               <td className="px-3 py-2 text-right font-semibold text-green-400">{formatFeeRatio(pair.fee_tvl_ratio["24h"])}</td>
@@ -88,11 +119,14 @@ type Tab = "pools" | "positions" | "monitor";
 export default function DlmmPage() {
   const { wallets, activeId, hydrated } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
-  const { pairs, pairsLoading, pairsLoaded, loadPairs, getPositions, positions, discoverAndLoadPositions, positionsLoading } = useDlmmStore();
+  const { pairs, pairsLoading, pairsLoaded, pairsLoadedAt, loadPairs, reloadPairs, getPositions, positions, discoverAndLoadPositions, positionsLoading } = useDlmmStore();
   const { settings, loadSettings } = useMonitorStore();
 
+  const { favorites, toggle: toggleFavorite } = useFavoritePools();
   const [tab, setTab] = useState<Tab>("pools");
   const [search, setSearch] = useState("");
+  const [starredOnly, setStarredOnly] = useState(false);
+  const [binStepFilter, setBinStepFilter] = useState<number | null>(null);
   const [searchResults, setSearchResults] = useState(pairs);
   const { searchPairs } = useDlmmStore();
 
@@ -103,7 +137,9 @@ export default function DlmmPage() {
     discoverAndLoadPositions(active.publicKey, settings.lpAgentApiKey);
   }, [active?.publicKey, settings.lpAgentApiKey, discoverAndLoadPositions]);
 
-  const filteredPairs = useMemo(() => pairs.filter(p => p.tvl >= settings.minPoolTvl), [pairs, settings.minPoolTvl]);
+  const filteredPairs = useMemo(() => pairs.filter(p =>
+    p.tvl >= settings.minPoolTvl && (binStepFilter === null || p.pool_config.bin_step >= binStepFilter)
+  ), [pairs, settings.minPoolTvl, binStepFilter]);
 
   useEffect(() => {
     if (!search.trim()) { setSearchResults(filteredPairs.slice(0, 25)); return; }
@@ -146,33 +182,83 @@ export default function DlmmPage() {
         </div>
 
         {/* Nav bar */}
-        <div className="flex items-center gap-3 mb-4">
-          <Tabs value={tab} onValueChange={v => setTab(v as Tab)}>
-            <TabsList className="bg-secondary">
-              <TabsTrigger value="pools">Browse Pools</TabsTrigger>
-              <TabsTrigger value="positions" className="flex items-center gap-1.5">
-                My Positions
-                {userPositions.length > 0 && (
-                  <span className="bg-primary text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                    {userPositions.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="monitor" className="flex items-center gap-1.5">
-                <Activity className="w-3.5 h-3.5" /> Monitor
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex flex-col items-center gap-2 mb-4">
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            <Tabs value={tab} onValueChange={v => setTab(v as Tab)}>
+              <TabsList className="bg-secondary">
+                <TabsTrigger value="pools">Browse Pools</TabsTrigger>
+                <TabsTrigger value="positions" className="flex items-center gap-1.5">
+                  My Positions
+                  {userPositions.length > 0 && (
+                    <span className="bg-primary text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      {userPositions.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="monitor" className="flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" /> Monitor
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {tab === "pools" && (
+              <>
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search pools..."
+                    className="pl-9 bg-secondary border-border h-9"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant={starredOnly ? "default" : "outline"}
+                  className={cn("h-9 gap-1.5", starredOnly && "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/30")}
+                  onClick={() => setStarredOnly(v => !v)}
+                >
+                  <Star className={cn("w-3.5 h-3.5", starredOnly && "fill-yellow-400")} />
+                  Starred
+                  {favorites.size > 0 && <span className="text-xs opacity-70">({favorites.size})</span>}
+                </Button>
+                <div className="flex items-center gap-2">
+                  {pairsLoadedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      {Math.floor((Date.now() - pairsLoadedAt) / 60_000)}m ago
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-9 px-2 text-muted-foreground hover:text-foreground"
+                    onClick={reloadPairs}
+                    disabled={pairsLoading}
+                  >
+                    <RefreshCw className={cn("w-3.5 h-3.5", pairsLoading && "animate-spin")} />
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
 
           {tab === "pools" && (
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search pools..."
-                className="pl-9 bg-secondary border-border h-9"
-              />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground mr-1">Bin step ≥</span>
+              {([null, 10, 50, 100, 200] as (number | null)[]).map(step => (
+                <button
+                  key={step ?? "all"}
+                  onClick={() => setBinStepFilter(step)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                    binStepFilter === step
+                      ? "bg-primary text-white"
+                      : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                  )}
+                >
+                  {step === null ? "All" : step}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -189,12 +275,17 @@ export default function DlmmPage() {
                   </div>
                 ))}
               </div>
-            ) : searchResults.length === 0 ? (
+            ) : (starredOnly ? searchResults.filter(p => favorites.has(p.address)) : searchResults).length === 0 ? (
               <Card className="p-12 text-center border-border">
-                <p className="text-muted-foreground">No pools found</p>
+                <p className="text-muted-foreground">{starredOnly ? "No starred pools" : "No pools found"}</p>
+                {starredOnly && <p className="text-xs text-muted-foreground mt-1">Star pools using the ☆ icon in the table</p>}
               </Card>
             ) : (
-              <PoolTable pairs={searchResults} />
+              <PoolTable
+                pairs={starredOnly ? searchResults.filter(p => favorites.has(p.address)) : searchResults}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+              />
             )}
           </div>
         )}

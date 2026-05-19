@@ -30,6 +30,18 @@ interface UserPositionWithMeta {
   tokenYDecimals: number;
   tokenXSymbol: string;
   tokenYSymbol: string;
+  lastUpdatedAt: number;
+}
+
+function formatAge(unixSecs: number): string {
+  const diffSecs = Math.floor(Date.now() / 1000) - unixSecs;
+  if (diffSecs < 60) return "just now";
+  const mins = Math.floor(diffSecs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(diffSecs / 3600);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(diffSecs / 86400);
+  return `${days}d ago`;
 }
 
 interface Props {
@@ -97,8 +109,11 @@ export function PositionCard({ position, tokenXPrice, tokenYPrice }: Props) {
               {position.inRange ? "In Range" : "Out of Range"}
             </Badge>
           </div>
-          <div className="text-xs text-muted-foreground font-mono mt-0.5">
-            Bins {position.lowerBinId} — {position.upperBinId}
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-muted-foreground font-mono">Bins {position.lowerBinId} — {position.upperBinId}</span>
+            {position.lastUpdatedAt > 0 && (
+              <span className="text-xs text-muted-foreground/60">{formatAge(position.lastUpdatedAt)}</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1">

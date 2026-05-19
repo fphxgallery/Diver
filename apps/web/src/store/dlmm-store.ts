@@ -27,6 +27,7 @@ interface DlmmState {
   pairs: DlmmPair[];
   pairsLoading: boolean;
   pairsLoaded: boolean;
+  pairsLoadedAt: number | null;
 
   positions: Record<string, UserPositionWithMeta[]>; // keyed by walletPubkey
   positionsLoading: Record<string, boolean>;
@@ -34,6 +35,7 @@ interface DlmmState {
   positionsLastFetchedAt: Record<string, number>;
 
   loadPairs: () => Promise<void>;
+  reloadPairs: () => Promise<void>;
   searchPairs: (query: string) => Promise<DlmmPair[]>;
   loadPositions: (walletPubkey: string, poolAddresses: string[], pairNames: Record<string, string>) => Promise<void>;
   discoverAndLoadPositions: (walletPubkey: string, apiKey: string) => Promise<void>;
@@ -45,6 +47,7 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
   pairs: [],
   pairsLoading: false,
   pairsLoaded: false,
+  pairsLoadedAt: null,
   positions: {},
   positionsLoading: {},
   positionsLoaded: {},
@@ -55,7 +58,18 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
     set({ pairsLoading: true });
     try {
       const pairs = await getTopPairs(100);
-      set({ pairs, pairsLoaded: true });
+      set({ pairs, pairsLoaded: true, pairsLoadedAt: Date.now() });
+    } finally {
+      set({ pairsLoading: false });
+    }
+  },
+
+  reloadPairs: async () => {
+    if (get().pairsLoading) return;
+    set({ pairsLoading: true, pairsLoaded: false });
+    try {
+      const pairs = await getTopPairs(100);
+      set({ pairs, pairsLoaded: true, pairsLoadedAt: Date.now() });
     } finally {
       set({ pairsLoading: false });
     }

@@ -14,7 +14,7 @@ import { decryptKeystore } from "@diver/keypair-store";
 import { getRpcUrl } from "@/lib/solana/client";
 import { healthColor, healthLabel, type PositionHealth, type RebalanceRecord } from "@/lib/meteora/monitor";
 import { cn } from "@/lib/utils";
-import { Server, Lock, Unlock, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Clock, Zap } from "lucide-react";
+import { Server, Lock, Unlock, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Clock, Zap, ChevronDown, ChevronUp } from "lucide-react";
 
 
 interface MonitorStatus {
@@ -147,6 +147,7 @@ export function ServerMonitor() {
   const { status, refresh } = useServerMonitor();
   const { positions } = useDlmmStore();
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const isUnlocked = status?.unlocked.some(u => u.walletId === active?.id) ?? false;
 
@@ -316,28 +317,45 @@ export function ServerMonitor() {
             </div>
 
             {(status?.history.length ?? 0) > 0 && (
-              <div className="border-t border-border p-4">
-                <h3 className="text-sm font-medium mb-3 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-muted-foreground" /> Rebalance History
-                </h3>
-                <div className="space-y-2">
-                  {status!.history.slice(0, 10).map(r => (
-                    <div key={r.id} className="flex items-center gap-2 text-xs">
-                      <span className={r.success ? "text-green-400" : "text-red-400"}>{r.success ? "✓" : "✗"}</span>
-                      <span className="text-muted-foreground font-mono">{r.pairName}</span>
-                      <Badge className="text-xs border-0 bg-secondary text-muted-foreground h-4">
-                        {r.reason.replace("_", " ")}
-                      </Badge>
-                      <span className="text-muted-foreground ml-auto">
-                        {new Date(r.triggeredAt).toLocaleTimeString()}
-                      </span>
-                      {r.txSigs[0] && (
-                        <a href={`https://solscan.io/tx/${r.txSigs[0]}`} target="_blank" rel="noopener noreferrer"
-                          className="text-primary hover:underline">Tx</a>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              <div className="border-t border-border">
+                <button
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-secondary/40 transition-colors"
+                  onClick={() => setHistoryOpen(v => !v)}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-muted-foreground" />
+                    Rebalance History
+                    <span className="text-xs text-muted-foreground font-normal ml-1">
+                      ({status!.history.length} {status!.history.filter(r => !r.success).length > 0 ? `· ${status!.history.filter(r => !r.success).length} failed` : ""})
+                    </span>
+                  </span>
+                  {historyOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                </button>
+                {historyOpen && (
+                  <div className="px-4 pb-4 space-y-2">
+                    {status!.history.slice(0, 20).map(r => (
+                      <div key={r.id} className="space-y-0.5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className={r.success ? "text-green-400" : "text-red-400"}>{r.success ? "✓" : "✗"}</span>
+                          <span className="text-muted-foreground font-mono">{r.pairName}</span>
+                          <Badge className="text-xs border-0 bg-secondary text-muted-foreground h-4">
+                            {r.reason.replace(/_/g, " ")}
+                          </Badge>
+                          <span className="text-muted-foreground ml-auto">
+                            {new Date(r.triggeredAt).toLocaleTimeString()}
+                          </span>
+                          {r.txSigs[0] && (
+                            <a href={`https://solscan.io/tx/${r.txSigs[0]}`} target="_blank" rel="noopener noreferrer"
+                              className="text-primary hover:underline">Tx</a>
+                          )}
+                        </div>
+                        {!r.success && r.error && (
+                          <div className="text-xs text-red-400/70 pl-4 font-mono truncate">{r.error}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

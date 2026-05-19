@@ -117,7 +117,7 @@ export default function SwapPage() {
   return (
     <>
       <WalletHydrator />
-      <div className="p-6 flex justify-center">
+      <div className="px-6 pt-16 pb-6 flex justify-center">
         <div className="w-full max-w-md space-y-3">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-semibold">Swap</h1>
