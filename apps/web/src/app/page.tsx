@@ -7,6 +7,7 @@ import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
 import { getTopAprPairs, formatFeeRatio, formatLiquidity } from "@/lib/meteora/pools";
+import { getOpeningPositions, getTokenBalances } from "@/lib/meteora/lpagent";
 import { useMonitorStore } from "@/store/monitor-store";
 import { useDlmmStore } from "@/store/dlmm-store";
 import { Layers, Wallet, TrendingUp, DollarSign } from "lucide-react";
@@ -48,6 +49,29 @@ export default function DashboardPage() {
   }, [active?.publicKey, settings.lpAgentApiKey, discoverAndLoadPositions]);
 
   const userPositions = active ? getPositions(active.publicKey) : [];
+
+  const hasApiKey = !!active && !!settings.lpAgentApiKey;
+
+  const { data: lpPositions, isPending: lpPending } = useQuery({
+    queryKey: ["lp-positions-financial", active?.publicKey, settings.lpAgentApiKey],
+    queryFn: () => getOpeningPositions(active!.publicKey, settings.lpAgentApiKey),
+    enabled: hasApiKey,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
+
+  const { data: tokenBalances } = useQuery({
+    queryKey: ["token-balances", active?.publicKey, settings.lpAgentApiKey],
+    queryFn: () => getTokenBalances(active!.publicKey, settings.lpAgentApiKey),
+    enabled: hasApiKey,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
+
+  const totalPositionValue = lpPositions?.reduce((sum, p) => sum + Number(p.currentValue ?? 0), 0) ?? 0;
+  const totalWalletValue = tokenBalances?.reduce((sum, t) => sum + Number(t.balanceInUsd ?? 0), 0) ?? 0;
+  const totalValue = totalPositionValue + totalWalletValue;
+  const fees24h = lpPositions?.reduce((sum, p) => sum + Number(p.yield24h ?? 0), 0) ?? 0;
 
   const { data: balance } = useQuery({
     queryKey: ["balance", active?.publicKey],
@@ -97,8 +121,16 @@ export default function DashboardPage() {
                 href="/wallets"
               />
               <StatCard label="DLMM Positions" value={userPositions.length > 0 ? String(userPositions.length) : "—"} icon={Layers} href="/dlmm" />
-              <StatCard label="Total Value" value="—" icon={DollarSign} />
-              <StatCard label="24h Fees Earned" value="—" icon={TrendingUp} />
+              <StatCard
+                label="Total Value"
+                value={!hasApiKey ? "—" : lpPending ? "..." : `$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                icon={DollarSign}
+              />
+              <StatCard
+                label="24h Fees Earned"
+                value={!hasApiKey ? "—" : lpPending ? "..." : `$${fees24h.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                icon={TrendingUp}
+              />
             </div>
 
             <div className="grid lg:grid-cols-2 gap-4">

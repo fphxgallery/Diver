@@ -159,6 +159,19 @@ export default function SettingsPage() {
             </div>
             <p className="text-xs text-muted-foreground mt-1.5">Used to auto-discover your open DLMM positions. Get a key at lpagent.io.</p>
           </div>
+          <div>
+            <Label className="mb-1.5 block">Jupiter API Key</Label>
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                value={settings.jupiterApiKey}
+                onChange={e => saveSetting("jupiterApiKey", e.target.value)}
+                placeholder="your-api-key"
+                className="bg-secondary border-border font-mono text-sm flex-1"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">Used for token swaps. Get a key at developers.jup.ag/portal.</p>
+          </div>
         </div>
       </Section>
 

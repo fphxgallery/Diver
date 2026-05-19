@@ -8,12 +8,12 @@ Self-hosted Solana wallet manager and Meteora DLMM liquidity position tool.
 
 ## Features
 
-- **Wallet management** — Create or import wallets via seed phrase or private key. Keys are encrypted with AES-256-GCM + PBKDF2 and stored locally. Export private key (base58) at any time.
-- **Token swaps** — Jupiter v6 aggregator with real-time quotes, price impact warnings, and slippage control.
+- **Wallet management** — Create or import wallets via seed phrase or private key. Keys are encrypted with AES-256-GCM + PBKDF2 and stored locally. Export private key (base58) at any time. Click any wallet to view a full portfolio page showing all token holdings including Token-2022 assets.
+- **Token swaps** — Jupiter v2 aggregator with real-time quotes, price impact warnings, slippage control, and 50%/Max preset buttons. Token selector shows your wallet holdings (including Token-2022 tokens) for quick selection. Configure your Jupiter API key in Settings → Integrations.
 - **Transfers** — Send SOL and SPL tokens with fee estimation.
 - **Meteora DLMM** — Browse pools sorted by 24h Fee/TVL ratio with token logos, open positions with Spot/Curve/Bid-Ask strategies, remove liquidity, and claim fees. Filter pools by minimum TVL from Settings. Pool address links directly to Meteora.
 - **Position discovery** — Connects to the LP Agent API to auto-discover all open DLMM positions for your wallet. No need to manually track pool addresses. Configure your API key in Settings → Integrations. Respects the 5 RPM rate limit with a 60-second cooldown between fetches.
-- **Bin range presets** — New position dialog uses percentage-based range presets (±10%, ±25%, ±50%, ±100%) relative to the pool's bin step, so ranges are meaningful across different pools.
+- **Bin range presets** — New position dialog uses percentage-based range presets (±10%, ±25%, ±50%, ±100%) relative to the pool's bin step, so ranges are meaningful across different pools. Auto-Fill toggle automatically calculates the second token amount based on current USD prices.
 - **Server monitor** — Runs in the Next.js server process — continues monitoring and auto-rebalancing even when the browser is closed. Key is decrypted client-side; only the 32-byte seed is sent over HTTPS. Uses your configured private RPC end-to-end (position fetch, transaction build, and send). Settings changes sync to the server immediately — no re-lock needed.
 - **Auto-rebalance** — Automatically rebalances positions using the Meteora native rebalance instruction. Triggers: out-of-range and/or edge proximity (configurable %). Configurable strategy (Spot/Curve/Bid-Ask), bin width, and minimum position value. Optional composition filter skips rebalance when token X ratio is outside a set range (edge proximity only — out-of-range always rebalances). Server Settings panel shows live rebalance config so you can verify what the server is running.
 
@@ -24,7 +24,7 @@ Self-hosted Solana wallet manager and Meteora DLMM liquidity position tool.
 | Framework | Next.js 16 (App Router, Turbopack) |
 | Solana client | `@solana/kit` + `@solana/web3.js` at boundaries |
 | DLMM SDK | `@meteora-ag/dlmm` |
-| Swaps | Jupiter Aggregator API v6 |
+| Swaps | Jupiter Aggregator API v2 |
 | Encryption | `@noble/ciphers` AES-256-GCM + `@noble/hashes` PBKDF2 |
 | State | Zustand v5 |
 | UI | Tailwind v4 + shadcn/ui (Base UI) |
@@ -92,7 +92,7 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 - Private keys never leave the browser unencrypted. AES-256-GCM encryption happens client-side; the password never touches the server.
 - Server monitor: only a 32-byte seed is sent over HTTPS. The keypair is held in server memory only — never written to disk — and zeroed on lock or expiry.
-- LP Agent API key is stored in `sessionStorage` (cleared on browser close), not persisted to disk.
+- LP Agent API key and Jupiter API key are stored in `sessionStorage` (cleared on browser close), not persisted to disk.
 - Use a private RPC endpoint in production to avoid rate limits and improve reliability.
 
 ## License

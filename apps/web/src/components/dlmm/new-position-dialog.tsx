@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +62,8 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
   const numBins = pctToNumBins(selectedPct, pair.pool_config.bin_step);
   const [amountX, setAmountX] = useState("");
   const [amountY, setAmountY] = useState("");
+  const [autoFill, setAutoFill] = useState(true);
+  const lastEdited = useRef<"x" | "y" | null>(null);
 
   const [bins, setBins] = useState<BinData[]>([]);
   const [activeBinId, setActiveBinId] = useState(0);
@@ -134,9 +136,29 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
     setSignOpen(false);
   }
 
+  const priceRatio = pair.token_x.price && pair.token_y.price ? pair.token_x.price / pair.token_y.price : null;
+
+  function handleAmountX(val: string) {
+    lastEdited.current = "x";
+    setAmountX(val);
+    if (autoFill && priceRatio && val && parseFloat(val) > 0) {
+      setAmountY((parseFloat(val) * priceRatio).toFixed(6));
+    }
+  }
+
+  function handleAmountY(val: string) {
+    lastEdited.current = "y";
+    setAmountY(val);
+    if (autoFill && priceRatio && val && parseFloat(val) > 0) {
+      setAmountX((parseFloat(val) / priceRatio).toFixed(6));
+    }
+  }
+
   function reset() {
     setAmountX("");
     setAmountY("");
+    setAutoFill(true);
+    lastEdited.current = null;
     setTxSig("");
     setError("");
     onClose();
@@ -205,38 +227,46 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
             </div>
 
             {/* Amounts */}
-            <div className="grid grid-cols-2 gap-3">
-              {([
-                { label: tokenA, value: amountX, set: setAmountX, balance: balanceX },
-                { label: tokenB, value: amountY, set: setAmountY, balance: balanceY },
-              ] as const).map(({ label, value, set, balance }) => (
-                <div key={label}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <Label>{label} Amount</Label>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground">
-                        {balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                      </span>
-                      <button
-                        onClick={() => set((balance / 2).toFixed(6))}
-                        className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                      >50%</button>
-                      <button
-                        onClick={() => set(balance.toFixed(6))}
-                        className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                      >Max</button>
-                    </div>
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label>Amount</Label>
+                <button
+                  onClick={() => setAutoFill(v => !v)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <div className={cn("w-9 h-5 rounded-full relative transition-colors", autoFill ? "bg-primary" : "bg-secondary")}>
+                    <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform", autoFill ? "translate-x-4" : "translate-x-0.5")} />
                   </div>
-                  <Input
-                    value={value}
-                    onChange={e => set(e.target.value)}
-                    placeholder="0.00"
-                    type="number"
-                    min="0"
-                    className="bg-secondary border-border"
-                  />
-                </div>
-              ))}
+                  Auto-Fill
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { label: tokenA, value: amountX, handler: handleAmountX, halfHandler: () => handleAmountX((balanceX / 2).toFixed(6)), maxHandler: () => handleAmountX(balanceX.toFixed(6)), balance: balanceX },
+                  { label: tokenB, value: amountY, handler: handleAmountY, halfHandler: () => handleAmountY((balanceY / 2).toFixed(6)), maxHandler: () => handleAmountY(balanceY.toFixed(6)), balance: balanceY },
+                ] as const).map(({ label, value, handler, halfHandler, maxHandler, balance }) => (
+                  <div key={label}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <Label className="text-xs font-medium">{label}</Label>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={halfHandler} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors">50%</button>
+                        <button onClick={maxHandler} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors">Max</button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground mb-1.5">
+                      Balance: {balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                    </div>
+                    <Input
+                      value={value}
+                      onChange={e => handler(e.target.value)}
+                      placeholder="0.00"
+                      type="number"
+                      min="0"
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="text-xs text-muted-foreground bg-secondary rounded-lg p-3 space-y-1">

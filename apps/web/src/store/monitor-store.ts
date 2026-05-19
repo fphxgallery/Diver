@@ -8,7 +8,8 @@ import {
 } from "@/lib/meteora/monitor";
 
 const SETTINGS_KEY = "diver:monitor-settings";
-const LP_API_KEY = "diver:lp-api-key"; // sessionStorage — cleared on browser close
+const LP_API_KEY = "diver:lp-api-key";       // sessionStorage — cleared on browser close
+const JUP_API_KEY = "diver:jupiter-api-key"; // sessionStorage — cleared on browser close
 
 interface MonitorState {
   settings: MonitorSettings;
@@ -25,7 +26,8 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       const raw = localStorage.getItem(SETTINGS_KEY);
       const base = raw ? { ...DEFAULT_MONITOR_SETTINGS, ...JSON.parse(raw) } : DEFAULT_MONITOR_SETTINGS;
       const lpAgentApiKey = sessionStorage.getItem(LP_API_KEY) ?? "";
-      set({ settings: { ...base, lpAgentApiKey } });
+      const jupiterApiKey = sessionStorage.getItem(JUP_API_KEY) ?? "";
+      set({ settings: { ...base, lpAgentApiKey, jupiterApiKey } });
     } catch {}
   },
 
@@ -34,7 +36,8 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
     set({ settings: next });
     if (typeof window !== "undefined") {
       if ("lpAgentApiKey" in s) sessionStorage.setItem(LP_API_KEY, next.lpAgentApiKey);
-      const { lpAgentApiKey: _, ...rest } = next;
+      if ("jupiterApiKey" in s) sessionStorage.setItem(JUP_API_KEY, next.jupiterApiKey);
+      const { lpAgentApiKey: _lp, jupiterApiKey: _jup, ...rest } = next;
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
       // Push to server for all unlocked wallets (fire-and-forget)
       fetch("/api/monitor")

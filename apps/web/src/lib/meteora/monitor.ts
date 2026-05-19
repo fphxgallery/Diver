@@ -57,6 +57,8 @@ export interface MonitorSettings {
   maxXRatioPct: number;
   /** LP Agent API key for position discovery */
   lpAgentApiKey: string;
+  /** Jupiter API key for swaps */
+  jupiterApiKey: string;
 }
 
 export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
@@ -72,6 +74,7 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   minXRatioPct: 40,
   maxXRatioPct: 60,
   lpAgentApiKey: "",
+  jupiterApiKey: "",
 };
 
 export function computePositionHealth(
@@ -124,6 +127,9 @@ export function computePositionHealth(
 }
 
 export function shouldAutoRebalance(health: PositionHealth, settings: MonitorSettings): string | null {
+  // Skip empty positions — nothing to redeposit, rebalancing just cycles ranges
+  if (health.totalXAmount === "0" && health.totalYAmount === "0") return null;
+
   if (settings.triggerOnOutOfRange && !health.inRange) {
     if (
       settings.compositionCheckEnabled &&

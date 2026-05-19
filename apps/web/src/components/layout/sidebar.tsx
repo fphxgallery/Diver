@@ -10,6 +10,7 @@ import {
   Layers,
   Settings,
   Zap,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/swap", icon: ArrowLeftRight, label: "Swap" },
   { href: "/transfer", icon: Send, label: "Transfer" },
   { href: "/dlmm", icon: Layers, label: "DLMM Positions" },
+  { href: "/logs", icon: ScrollText, label: "Logs" },
 ];
 
 function NavItem({ href, icon: Icon, label }: { href: string; icon: React.ElementType; label: string }) {

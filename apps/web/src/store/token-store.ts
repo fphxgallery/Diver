@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { getTokenList, type JupiterToken } from "@/lib/jupiter/api";
+import { searchTokens, type JupiterToken } from "@/lib/jupiter/api";
 
 const SOL_TOKEN: JupiterToken = {
   address: "So11111111111111111111111111111111111111112",
@@ -12,42 +12,52 @@ const SOL_TOKEN: JupiterToken = {
   tags: ["verified"],
 };
 
+// Small static list for empty-query state (avoids a no-query API call on open)
+const DEFAULT_TOKENS: JupiterToken[] = [
+  SOL_TOKEN,
+  {
+    address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    symbol: "USDC",
+    name: "USD Coin",
+    decimals: 6,
+    logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+    tags: ["verified"],
+  },
+];
+
 interface TokenState {
-  tokens: JupiterToken[];
-  loading: boolean;
-  loaded: boolean;
-  load: () => Promise<void>;
-  search: (query: string) => JupiterToken[];
+  // cache of tokens fetched during this session
+  cache: Map<string, JupiterToken>;
+  searching: boolean;
+  searchResults: JupiterToken[];
+  search: (query: string) => void;
   getByMint: (mint: string) => JupiterToken | undefined;
 }
 
 export const useTokenStore = create<TokenState>((set, get) => ({
-  tokens: [SOL_TOKEN],
-  loading: false,
-  loaded: false,
+  cache: new Map(DEFAULT_TOKENS.map(t => [t.address, t])),
+  searching: false,
+  searchResults: DEFAULT_TOKENS,
 
-  load: async () => {
-    if (get().loaded || get().loading) return;
-    set({ loading: true });
+  search: async (query) => {
+    const q = query.trim();
+    if (!q) {
+      set({ searchResults: DEFAULT_TOKENS, searching: false });
+      return;
+    }
+    set({ searching: true });
     try {
-      const list = await getTokenList();
-      set({ tokens: [SOL_TOKEN, ...list.filter(t => t.address !== SOL_TOKEN.address)], loaded: true });
-    } finally {
-      set({ loading: false });
+      const results = await searchTokens(q);
+      // merge into cache
+      const cache = get().cache;
+      for (const t of results) cache.set(t.address, t);
+      set({ searchResults: results, cache: new Map(cache), searching: false });
+    } catch {
+      set({ searching: false });
     }
   },
 
-  search: (query) => {
-    const q = query.toLowerCase().trim();
-    if (!q) return get().tokens.slice(0, 50);
-    return get().tokens.filter(t =>
-      t.symbol.toLowerCase().includes(q) ||
-      t.name.toLowerCase().includes(q) ||
-      t.address.toLowerCase() === q
-    ).slice(0, 50);
-  },
-
-  getByMint: (mint) => get().tokens.find(t => t.address === mint),
+  getByMint: (mint) => get().cache.get(mint),
 }));
 
 export { SOL_TOKEN };

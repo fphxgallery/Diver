@@ -26,6 +26,10 @@ interface UserPositionWithMeta {
   feeY: string;
   inRange: boolean;
   activeBinId: number;
+  tokenXDecimals: number;
+  tokenYDecimals: number;
+  tokenXSymbol: string;
+  tokenYSymbol: string;
 }
 
 interface Props {
@@ -101,17 +105,17 @@ export function PositionCard({ position }: Props) {
       {/* Liquidity amounts */}
       <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
         <div>
-          <div className="text-muted-foreground text-xs mb-0.5">Token X</div>
-          <div className="font-medium">{(parseFloat(position.totalXAmount) / 1e6).toFixed(4)}</div>
+          <div className="text-muted-foreground text-xs mb-0.5">{position.tokenXSymbol}</div>
+          <div className="font-medium">{(parseFloat(position.totalXAmount) / Math.pow(10, position.tokenXDecimals)).toFixed(4)}</div>
           {new BN(position.feeX).gtn(0) && (
-            <div className="text-xs text-green-400">+{(parseFloat(position.feeX) / 1e6).toFixed(6)} fees</div>
+            <div className="text-xs text-green-400">+{(parseFloat(position.feeX) / Math.pow(10, position.tokenXDecimals)).toFixed(6)} fees</div>
           )}
         </div>
         <div>
-          <div className="text-muted-foreground text-xs mb-0.5">Token Y</div>
-          <div className="font-medium">{(parseFloat(position.totalYAmount) / 1e6).toFixed(4)}</div>
+          <div className="text-muted-foreground text-xs mb-0.5">{position.tokenYSymbol}</div>
+          <div className="font-medium">{(parseFloat(position.totalYAmount) / Math.pow(10, position.tokenYDecimals)).toFixed(4)}</div>
           {new BN(position.feeY).gtn(0) && (
-            <div className="text-xs text-green-400">+{(parseFloat(position.feeY) / 1e6).toFixed(6)} fees</div>
+            <div className="text-xs text-green-400">+{(parseFloat(position.feeY) / Math.pow(10, position.tokenYDecimals)).toFixed(6)} fees</div>
           )}
         </div>
       </div>

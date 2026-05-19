@@ -11,6 +11,17 @@ import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID 
 import { getConnection, walletToKeypair, type Cluster } from "@/lib/meteora/web3-compat-boundary";
 import type { StoredWallet } from "@diver/keypair-store";
 
+export function signTransaction(
+  txBase64: string,
+  wallet: StoredWallet,
+  password: string
+): string {
+  const keypair = walletToKeypair(wallet, password);
+  const tx = VersionedTransaction.deserialize(Buffer.from(txBase64, "base64"));
+  tx.sign([keypair]);
+  return Buffer.from(tx.serialize()).toString("base64");
+}
+
 export async function signAndSendTransaction(
   txBase64: string,
   wallet: StoredWallet,

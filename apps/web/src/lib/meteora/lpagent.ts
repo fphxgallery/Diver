@@ -7,6 +7,18 @@ export interface LpAgentPosition {
   inRange: boolean;
   token0: string;
   token1: string;
+  currentValue: number;
+  yield24h: number | null;
+}
+
+export interface LpAgentTokenBalance {
+  tokenAddress: string;
+  symbol: string;
+  balance: number;
+  balanceInUsd: number;
+  price: number;
+  logo: string;
+  decimals: number;
 }
 
 export async function getOpeningPositions(owner: string, apiKey: string): Promise<LpAgentPosition[]> {
@@ -17,4 +29,14 @@ export async function getOpeningPositions(owner: string, apiKey: string): Promis
   if (!res.ok) throw new Error(`LP Agent ${res.status}`);
   const json = await res.json();
   return (json.data ?? []) as LpAgentPosition[];
+}
+
+export async function getTokenBalances(owner: string, apiKey: string): Promise<LpAgentTokenBalance[]> {
+  const res = await fetch(
+    `${BASE_URL}/token-balances?owner=${encodeURIComponent(owner)}`,
+    { headers: { "x-api-key": apiKey } }
+  );
+  if (!res.ok) throw new Error(`LP Agent ${res.status}`);
+  const json = await res.json();
+  return (json.data ?? []) as LpAgentTokenBalance[];
 }

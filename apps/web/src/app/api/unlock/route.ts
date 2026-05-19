@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Keypair } from "@solana/web3.js";
 import { checkPin } from "@/lib/server/auth";
 import { setKey } from "@/lib/server/key-store";
+import { addLog } from "@/lib/server/server-log";
 import type { MonitorSettings } from "@/lib/meteora/monitor";
 import { DEFAULT_MONITOR_SETTINGS } from "@/lib/meteora/monitor";
 
@@ -60,6 +61,8 @@ export async function POST(req: NextRequest) {
     pairNames,
     rpcUrl,
   }, ttlMs);
+
+  addLog("info", "wallet.unlock", `Wallet unlocked — ${publicKey.slice(0, 8)}…${publicKey.slice(-4)} (TTL ${ttlHours}h)`, { walletId, publicKey: publicKey.slice(0, 8) });
 
   return NextResponse.json({ ok: true, expiresAt });
 }

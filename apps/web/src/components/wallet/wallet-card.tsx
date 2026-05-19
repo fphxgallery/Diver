@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Copy, CheckCircle2, Trash2, Radio, Download, Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
 import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
@@ -133,10 +134,11 @@ export function WalletCard({ wallet }: Props) {
   }
 
   return (
+    <Link href={`/wallets/${wallet.id}`} className="block">
     <Card className={cn(
       "p-4 bg-card border transition-all duration-200 cursor-pointer hover:border-primary/50",
       isActive ? "border-primary glow-purple" : "border-border"
-    )} onClick={() => setActive(wallet.id)}>
+    )}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
@@ -195,5 +197,6 @@ export function WalletCard({ wallet }: Props) {
 
       <ExportDialog wallet={wallet} open={exportOpen} onClose={() => setExportOpen(false)} />
     </Card>
+    </Link>
   );
 }

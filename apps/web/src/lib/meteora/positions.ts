@@ -158,8 +158,25 @@ export async function buildRemoveLiquidity(params: {
   if (!position) throw new Error("Position not found");
 
   const { blockhash } = await connection.getLatestBlockhash();
-  const bps = new BN(params.bpsToRemove ?? 10000);
 
+  // Empty positions (no liquidity, no fees) can't go through removeLiquidity — SDK crashes.
+  // Use closePositionIfEmpty instead.
+  const isEmpty =
+    position.positionData.totalXAmount === "0" &&
+    position.positionData.totalYAmount === "0" &&
+    position.positionData.feeX.isZero() &&
+    position.positionData.feeY.isZero();
+
+  if (isEmpty) {
+    const tx = await pool.closePositionIfEmpty({ owner: keypair.publicKey, position });
+    if (tx instanceof Transaction) {
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = keypair.publicKey;
+    }
+    return [serializeTx(tx, [keypair])];
+  }
+
+  const bps = new BN(params.bpsToRemove ?? 10000);
   const txs = await pool.removeLiquidity({
     position: position.publicKey,
     user: keypair.publicKey,

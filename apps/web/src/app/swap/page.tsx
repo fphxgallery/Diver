@@ -10,16 +10,16 @@ import { SignDialog } from "@/components/wallet/sign-dialog";
 import { useWalletStore } from "@/store/wallet-store";
 import { useTokenStore, SOL_TOKEN } from "@/store/token-store";
 import {
-  getQuote,
-  getSwapTransaction,
+  getSwapOrder,
+  executeSwap,
   formatAmount,
   toRawAmount,
   priceImpactLabel,
   type JupiterToken,
-  type QuoteResponse,
+  type OrderResponse,
 } from "@/lib/jupiter/api";
-import { signAndSendTransaction } from "@/lib/solana/send";
-import { getSolBalance } from "@/lib/solana/balance";
+import { signTransaction } from "@/lib/solana/send";
+import { getTokenBalance, getPortfolioItems } from "@/lib/solana/balance";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownUp, ChevronDown, Settings2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,7 @@ const SLIPPAGE_OPTIONS = [0.1, 0.5, 1.0];
 export default function SwapPage() {
   const { wallets, activeId } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
-  void useTokenStore(); // trigger hydration
+  useTokenStore();
 
   const [tokenIn, setTokenIn] = useState<JupiterToken>(SOL_TOKEN);
   const [tokenOut, setTokenOut] = useState<JupiterToken>(USDC);
@@ -46,19 +46,36 @@ export default function SwapPage() {
   const [customSlippage, setCustomSlippage] = useState("");
   const [showSlippage, setShowSlippage] = useState(false);
   const [selectorOpen, setSelectorOpen] = useState<"in" | "out" | null>(null);
-  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [quote, setQuote] = useState<OrderResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [signOpen, setSignOpen] = useState(false);
   const [txSig, setTxSig] = useState("");
   const [swapError, setSwapError] = useState("");
 
-  const { data: solBalance } = useQuery({
-    queryKey: ["balance", active?.publicKey],
-    queryFn: () => getSolBalance(active!.publicKey),
+  const { data: tokenInBalance } = useQuery({
+    queryKey: ["tokenBalance", active?.publicKey, tokenIn.address],
+    queryFn: () => getTokenBalance(active!.publicKey, tokenIn.address),
     enabled: !!active,
     refetchInterval: 30_000,
   });
+
+  const { data: portfolio } = useQuery({
+    queryKey: ["portfolio", active?.publicKey],
+    queryFn: () => getPortfolioItems(active!.publicKey),
+    enabled: !!active,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const walletTokens = portfolio?.map(item => ({
+    address: item.mint,
+    symbol: item.symbol,
+    name: item.name,
+    logoURI: item.logoURI,
+    decimals: item.decimals,
+    balance: item.balance,
+  } as JupiterToken & { balance: number }));
 
   const fetchQuote = useCallback(async () => {
     if (!amountIn || parseFloat(amountIn) <= 0 || !active) { setQuote(null); return; }
@@ -66,7 +83,7 @@ export default function SwapPage() {
     setQuoteError("");
     try {
       const raw = toRawAmount(amountIn, tokenIn.decimals);
-      const q = await getQuote({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps });
+      const q = await getSwapOrder({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps, taker: active.publicKey });
       setQuote(q);
     } catch (e) {
       setQuoteError(e instanceof Error ? e.message : "Quote failed");
@@ -81,16 +98,20 @@ export default function SwapPage() {
   function flipTokens() { setTokenIn(tokenOut); setTokenOut(tokenIn); setAmountIn(""); setQuote(null); }
 
   async function handleSwap(password: string) {
-    if (!quote || !active) throw new Error("No quote");
-    const { swapTransaction } = await getSwapTransaction({ quoteResponse: quote, userPublicKey: active.publicKey });
-    const sig = await signAndSendTransaction(swapTransaction, active, password);
-    setTxSig(sig);
+    if (!active) throw new Error("No wallet");
+    // Fetch a fresh order at sign time to avoid stale blockhash
+    const raw = toRawAmount(amountIn, tokenIn.decimals);
+    const order = await getSwapOrder({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps, taker: active.publicKey });
+    const signed = signTransaction(order.transaction!, active, password);
+    const result = await executeSwap({ signedTransaction: signed, requestId: order.requestId });
+    if (result.status !== "Success") throw new Error(result.error ?? "Swap failed");
+    setTxSig(result.signature);
     setSignOpen(false);
     setAmountIn("");
     setQuote(null);
   }
 
-  const impactLevel = quote ? priceImpactLabel(quote.priceImpactPct) : null;
+  const impactLevel = quote ? priceImpactLabel(quote.priceImpact) : null;
   const canSwap = !!quote && !!active && !quoteLoading;
 
   return (
@@ -124,10 +145,16 @@ export default function SwapPage() {
           <Card className="p-4 border-border bg-card">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">You pay</span>
-              {active && tokenIn.address === SOL_TOKEN.address && solBalance !== undefined && (
-                <button onClick={() => setAmountIn((solBalance - 0.005).toFixed(9))} className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                  Max: {solBalance.toFixed(4)} SOL
-                </button>
+              {active && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {tokenInBalance === undefined ? "..." : `${tokenInBalance.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${tokenIn.symbol}`}
+                  </span>
+                  {tokenInBalance !== undefined && tokenInBalance > 0 && <>
+                    <button onClick={() => setAmountIn((tokenInBalance / 2).toFixed(tokenIn.decimals))} className="text-xs px-1.5 py-0.5 rounded bg-secondary hover:bg-primary hover:text-white transition-colors">50%</button>
+                    <button onClick={() => setAmountIn(tokenInBalance.toFixed(tokenIn.decimals))} className="text-xs px-1.5 py-0.5 rounded bg-secondary hover:bg-primary hover:text-white transition-colors">Max</button>
+                  </>}
+                </div>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -169,7 +196,7 @@ export default function SwapPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price impact</span>
                 <span className={cn(impactLevel === "low" ? "text-green-400" : impactLevel === "medium" ? "text-yellow-400" : "text-destructive")}>
-                  {parseFloat(quote.priceImpactPct).toFixed(3)}%{impactLevel !== "low" && " ⚠"}
+                  {(Math.abs(quote.priceImpact) * 100).toFixed(3)}%{impactLevel !== "low" && " ⚠"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -203,7 +230,7 @@ export default function SwapPage() {
         </div>
       </div>
 
-      <TokenSelector open={selectorOpen === "in"} onClose={() => setSelectorOpen(null)} onSelect={t => setTokenIn(t)} excluded={tokenOut.address} />
+      <TokenSelector open={selectorOpen === "in"} onClose={() => setSelectorOpen(null)} onSelect={t => setTokenIn(t)} excluded={tokenOut.address} walletTokens={walletTokens} />
       <TokenSelector open={selectorOpen === "out"} onClose={() => setSelectorOpen(null)} onSelect={t => setTokenOut(t)} excluded={tokenIn.address} />
       <SignDialog open={signOpen} title="Confirm Swap"
         description={quote ? `Swap ${formatAmount(quote.inAmount, tokenIn.decimals)} ${tokenIn.symbol} → ${formatAmount(quote.outAmount, tokenOut.decimals)} ${tokenOut.symbol}` : undefined}

@@ -22,6 +22,10 @@ interface UserPositionWithMeta extends PositionInfo {
   pairName: string;
   inRange: boolean;
   activeBinId: number;
+  tokenXDecimals: number;
+  tokenYDecimals: number;
+  tokenXSymbol: string;
+  tokenYSymbol: string;
 }
 
 export default function PoolDetailPage() {
@@ -61,12 +65,16 @@ export default function PoolDetailPage() {
     if (!active) return;
     setPositionsLoading(true);
     getUserPositions(poolAddress, active.publicKey)
-      .then(({ userPositions, activeBinId: a }) => {
+      .then(({ userPositions, activeBinId: a, tokenXDecimals, tokenYDecimals }) => {
         setPositions(userPositions.map(p => ({
           ...p,
           pairName: pair?.name ?? poolAddress.slice(0, 8),
           inRange: isPositionInRange(p, a),
           activeBinId: a,
+          tokenXDecimals,
+          tokenYDecimals,
+          tokenXSymbol: pair?.token_x.symbol ?? "X",
+          tokenYSymbol: pair?.token_y.symbol ?? "Y",
         })));
       })
       .catch(() => {})
@@ -77,12 +85,16 @@ export default function PoolDetailPage() {
     if (!active || !pair) return;
     if (active) invalidate(active.publicKey);
     getUserPositions(poolAddress, active.publicKey)
-      .then(({ userPositions, activeBinId: a }) => {
+      .then(({ userPositions, activeBinId: a, tokenXDecimals, tokenYDecimals }) => {
         setPositions(userPositions.map(p => ({
           ...p,
           pairName: pair.name,
           inRange: isPositionInRange(p, a),
           activeBinId: a,
+          tokenXDecimals,
+          tokenYDecimals,
+          tokenXSymbol: pair.token_x.symbol,
+          tokenYSymbol: pair.token_y.symbol,
         })));
       })
       .catch(() => {});

@@ -12,6 +12,15 @@ interface UserPositionWithMeta extends PositionInfo {
   pairName: string;
   inRange: boolean;
   activeBinId: number;
+  tokenXDecimals: number;
+  tokenYDecimals: number;
+  tokenXSymbol: string;
+  tokenYSymbol: string;
+}
+
+function parseSymbols(pairName: string): [string, string] {
+  const parts = pairName.split("-");
+  return parts.length >= 2 ? [parts[0], parts[parts.length - 1]] : ["X", "Y"];
 }
 
 interface DlmmState {
@@ -65,13 +74,19 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
       const allPositions: UserPositionWithMeta[] = [];
       await Promise.allSettled(
         poolAddresses.map(async (poolAddr) => {
-          const { userPositions, activeBinId } = await getUserPositions(poolAddr, walletPubkey);
+          const { userPositions, activeBinId, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, walletPubkey);
+          const name = pairNames[poolAddr] ?? poolAddr.slice(0, 8);
+          const [tokenXSymbol, tokenYSymbol] = parseSymbols(name);
           userPositions.forEach(pos => {
             allPositions.push({
               ...pos,
-              pairName: pairNames[poolAddr] ?? poolAddr.slice(0, 8),
+              pairName: name,
               inRange: isPositionInRange(pos, activeBinId),
               activeBinId,
+              tokenXDecimals,
+              tokenYDecimals,
+              tokenXSymbol,
+              tokenYSymbol,
             });
           });
         })
