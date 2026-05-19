@@ -5,7 +5,6 @@ import {
   SystemProgram,
   PublicKey,
   TransactionMessage,
-  LAMPORTS_PER_SOL,
   SendTransactionError,
 } from "@solana/web3.js";
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";

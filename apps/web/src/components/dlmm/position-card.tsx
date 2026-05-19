@@ -10,7 +10,7 @@ import { useDlmmStore } from "@/store/dlmm-store";
 import { buildRemoveLiquidity, buildClaimFees } from "@/lib/meteora/positions";
 import { signAndSendTransaction } from "@/lib/solana/send";
 import { cn } from "@/lib/utils";
-import { Coins, Minus, ExternalLink, TrendingUp } from "lucide-react";
+import { Coins, Minus, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import BN from "bn.js";
 

@@ -41,13 +41,14 @@ function Section({ title, icon: Icon, children }: { title: string; icon: React.E
 
 export default function SettingsPage() {
   const { settings, loadSettings, saveSettings } = useMonitorStore();
-  const [rpcUrl, setRpcUrl] = useState("");
+  const [rpcUrl, setRpcUrl] = useState(() => {
+    const storedRpc = typeof window !== "undefined" ? localStorage.getItem("diver:rpc-url") : null;
+    return storedRpc ?? process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+  });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     loadSettings();
-    const storedRpc = typeof window !== "undefined" ? localStorage.getItem("diver:rpc-url") : null;
-    setRpcUrl(storedRpc ?? process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.mainnet-beta.solana.com");
   }, [loadSettings]);
 
   function persistRpc() {

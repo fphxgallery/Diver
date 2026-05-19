@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { StrategyType } from "@meteora-ag/dlmm";
 import {
   DEFAULT_MONITOR_SETTINGS,
   type MonitorSettings,
@@ -37,7 +36,8 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
     if (typeof window !== "undefined") {
       if ("lpAgentApiKey" in s) sessionStorage.setItem(LP_API_KEY, next.lpAgentApiKey);
       if ("jupiterApiKey" in s) sessionStorage.setItem(JUP_API_KEY, next.jupiterApiKey);
-      const { lpAgentApiKey: _lp, jupiterApiKey: _jup, ...rest } = next;
+      const { lpAgentApiKey, jupiterApiKey, ...rest } = next;
+      void lpAgentApiKey; void jupiterApiKey;
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest));
       // Push to server for all unlocked wallets (fire-and-forget)
       fetch("/api/monitor")

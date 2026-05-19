@@ -38,9 +38,11 @@ function useServerMonitor(pollInterval = 15_000) {
   }, []);
 
   useEffect(() => {
-    fetch_();
-    const id = setInterval(fetch_, pollInterval);
-    return () => clearInterval(id);
+    let cancelled = false;
+    const run = async () => { if (!cancelled) await fetch_(); };
+    run();
+    const id = setInterval(run, pollInterval);
+    return () => { cancelled = true; clearInterval(id); };
   }, [fetch_, pollInterval]);
 
   return { status, refresh: fetch_ };

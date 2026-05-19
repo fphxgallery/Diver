@@ -71,12 +71,11 @@ export function TokenSelector({ open, onClose, onSelect, excluded, walletTokens 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (open) {
-      search("");
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery("");
-    }
+    if (!open) return;
+    search("");
+    const focusId = setTimeout(() => inputRef.current?.focus(), 50);
+    const clearId = setTimeout(() => setQuery(""), 0);
+    return () => { clearTimeout(focusId); clearTimeout(clearId); };
   }, [open, search]);
 
   const handleQueryChange = useCallback((value: string) => {

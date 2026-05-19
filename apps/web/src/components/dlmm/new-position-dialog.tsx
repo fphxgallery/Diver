@@ -86,14 +86,17 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    setBinsLoading(true);
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) setBinsLoading(true); });
     getPoolBins(pair.address, activeBinId - 50, activeBinId + 50)
       .then(({ bins: b, activeBinId: a }) => {
+        if (cancelled) return;
         setBins(b);
         setActiveBinId(a);
       })
       .catch(() => {})
-      .finally(() => setBinsLoading(false));
+      .finally(() => { if (!cancelled) setBinsLoading(false); });
+    return () => { cancelled = true; };
   }, [open, pair.address]);
 
   // Reload bins when activeBinId known
@@ -241,9 +244,10 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3">
+                {/* eslint-disable-next-line react-hooks/refs */}
                 {([
-                  { label: tokenA, value: amountX, handler: handleAmountX, halfHandler: () => handleAmountX((balanceX / 2).toFixed(6)), maxHandler: () => handleAmountX(balanceX.toFixed(6)), balance: balanceX },
-                  { label: tokenB, value: amountY, handler: handleAmountY, halfHandler: () => handleAmountY((balanceY / 2).toFixed(6)), maxHandler: () => handleAmountY(balanceY.toFixed(6)), balance: balanceY },
+                  { label: tokenA, value: amountX, handler: (v: string) => handleAmountX(v), halfHandler: () => handleAmountX((balanceX / 2).toFixed(6)), maxHandler: () => handleAmountX(balanceX.toFixed(6)), balance: balanceX },
+                  { label: tokenB, value: amountY, handler: (v: string) => handleAmountY(v), halfHandler: () => handleAmountY((balanceY / 2).toFixed(6)), maxHandler: () => handleAmountY(balanceY.toFixed(6)), balance: balanceY },
                 ] as const).map(({ label, value, handler, halfHandler, maxHandler, balance }) => (
                   <div key={label}>
                     <div className="flex items-center justify-between mb-0.5">

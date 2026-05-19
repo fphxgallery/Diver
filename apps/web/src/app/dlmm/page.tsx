@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,38 +42,38 @@ function useFavoritePools() {
 type SortKey = "fee_tvl_24h" | "tvl" | "volume" | "fees";
 type SortDir = "asc" | "desc";
 
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ChevronUp className="w-3 h-3 opacity-20" />;
+  return dir === "desc" ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />;
+}
+
+function ColHeader({ k, label, className, sortKey, sortDir, onToggle }: { k: SortKey; label: string; className?: string; sortKey: SortKey; sortDir: SortDir; onToggle: (k: SortKey) => void }) {
+  const isRight = className?.includes("text-right");
+  return (
+    <th
+      className={`px-3 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap ${className ?? ""}`}
+      onClick={() => onToggle(k)}
+    >
+      <span className={`flex items-center gap-1 ${isRight ? "justify-end" : ""}`}><SortIcon active={sortKey === k} dir={sortDir} />{label}</span>
+    </th>
+  );
+}
+
 function PoolTable({ pairs, favorites, onToggleFavorite }: { pairs: DlmmPair[]; favorites: Set<string>; onToggleFavorite: (address: string) => void }) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState<SortKey>("fee_tvl_24h");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  function toggleSort(key: SortKey) {
+  const toggleSort = useCallback((key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc");
     else { setSortKey(key); setSortDir("desc"); }
-  }
+  }, [sortKey]);
 
   const sorted = [...pairs].sort((a, b) => {
     const av = sortKey === "volume" ? a.volume["24h"] : sortKey === "fees" ? a.fees["24h"] : sortKey === "fee_tvl_24h" ? a.fee_tvl_ratio["24h"] : a.tvl;
     const bv = sortKey === "volume" ? b.volume["24h"] : sortKey === "fees" ? b.fees["24h"] : sortKey === "fee_tvl_24h" ? b.fee_tvl_ratio["24h"] : b.tvl;
     return sortDir === "desc" ? bv - av : av - bv;
   });
-
-  function SortIcon({ k }: { k: SortKey }) {
-    if (sortKey !== k) return <ChevronUp className="w-3 h-3 opacity-20" />;
-    return sortDir === "desc" ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />;
-  }
-
-  function ColHeader({ k, label, className }: { k: SortKey; label: string; className?: string }) {
-    const isRight = className?.includes("text-right");
-    return (
-      <th
-        className={`px-3 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap ${className ?? ""}`}
-        onClick={() => toggleSort(k)}
-      >
-        <span className={`flex items-center gap-1 ${isRight ? "justify-end" : ""}`}><SortIcon k={k} />{label}</span>
-      </th>
-    );
-  }
 
   return (
     <div className="rounded-xl border border-border overflow-hidden max-w-4xl mx-auto">
@@ -83,10 +83,10 @@ function PoolTable({ pairs, favorites, onToggleFavorite }: { pairs: DlmmPair[]; 
             <th className="px-2 py-2.5 w-8" />
             <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Pool</th>
             <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground text-left">Bin Step</th>
-            <ColHeader k="fee_tvl_24h" label="Fee/TVL 24h" className="text-right" />
-            <ColHeader k="tvl" label="TVL" className="text-right" />
-            <ColHeader k="volume" label="Vol 24h" className="text-right" />
-            <ColHeader k="fees" label="Fees 24h" className="text-right" />
+            <ColHeader k="fee_tvl_24h" label="Fee/TVL 24h" className="text-right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+            <ColHeader k="tvl" label="TVL" className="text-right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+            <ColHeader k="volume" label="Vol 24h" className="text-right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+            <ColHeader k="fees" label="Fees 24h" className="text-right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -127,8 +127,9 @@ export default function DlmmPage() {
   const [search, setSearch] = useState("");
   const [starredOnly, setStarredOnly] = useState(false);
   const [binStepFilter, setBinStepFilter] = useState<number | null>(null);
-  const [searchResults, setSearchResults] = useState(pairs);
+  const [remote, setRemote] = useState<{ term: string; results: DlmmPair[] } | null>(null);
   const { searchPairs } = useDlmmStore();
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => { loadPairs(); loadSettings(); }, [loadPairs, loadSettings]);
 
@@ -137,21 +138,31 @@ export default function DlmmPage() {
     discoverAndLoadPositions(active.publicKey, settings.lpAgentApiKey);
   }, [active?.publicKey, settings.lpAgentApiKey, discoverAndLoadPositions]);
 
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const filteredPairs = useMemo(() => pairs.filter(p =>
     p.tvl >= settings.minPoolTvl && (binStepFilter === null || p.pool_config.bin_step >= binStepFilter)
   ), [pairs, settings.minPoolTvl, binStepFilter]);
 
+  const localSearchResults = useMemo(() => {
+    if (!search.trim()) return filteredPairs.slice(0, 25);
+    const term = search.toLowerCase();
+    return filteredPairs.filter(p => p.name.toLowerCase().includes(term) || p.address.toLowerCase().includes(term)).slice(0, 25);
+  }, [search, filteredPairs]);
+
   useEffect(() => {
-    if (!search.trim()) { setSearchResults(filteredPairs.slice(0, 25)); return; }
+    if (!search.trim() || localSearchResults.length > 0) return;
     const t = setTimeout(async () => {
-      const term = search.toLowerCase();
-      const local = filteredPairs.filter(p => p.name.toLowerCase().includes(term) || p.address.toLowerCase().includes(term));
-      if (local.length > 0) { setSearchResults(local.slice(0, 25)); return; }
       const results = await searchPairs(search);
-      setSearchResults(results);
+      setRemote({ term: search, results });
     }, 300);
     return () => clearTimeout(t);
-  }, [search, filteredPairs, searchPairs]);
+  }, [search, localSearchResults, searchPairs]);
+
+  const searchResults = remote && remote.term === search ? remote.results : localSearchResults;
 
   const userPositions = active ? getPositions(active.publicKey) : [];
   const inRangeCount = userPositions.filter(p => p.inRange).length;
@@ -225,7 +236,7 @@ export default function DlmmPage() {
                 <div className="flex items-center gap-2">
                   {pairsLoadedAt && (
                     <span className="text-xs text-muted-foreground">
-                      {Math.floor((Date.now() - pairsLoadedAt) / 60_000)}m ago
+                      {Math.floor((nowTick - pairsLoadedAt) / 60_000)}m ago
                     </span>
                   )}
                   <Button

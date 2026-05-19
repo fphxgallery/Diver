@@ -1,4 +1,4 @@
-import { PublicKey, Transaction, VersionedTransaction, TransactionMessage, SystemProgram } from "@solana/web3.js";
+import { PublicKey, VersionedTransaction, TransactionMessage } from "@solana/web3.js";
 import BN from "bn.js";
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
 import { getConnection, walletToKeypair, type Cluster } from "./web3-compat-boundary";

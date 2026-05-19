@@ -102,6 +102,13 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.2.0
+- **Dynamic 50/50 top-up on auto-rebalance.** New `topUpEnabled` setting. When a position drifts single-sided, the server now tops up the deficit token from the wallet (if available) and withdraws an equivalent amount of the excess token, keeping total position value stable. Skips entirely when wallet lacks the deficit token — never withdraws excess without a matching add. Scales partial top-ups proportionally.
+- **LP Agent deduplication.** Dashboard previously fired two simultaneous `getOpeningPositions` calls on mount. Consolidated into a single fetch stored on `dlmm-store`; dashboard reads from store instead of running its own query.
+- **RPC burst smoothing.** Server monitor and client `loadPositions` no longer fan out all pools concurrently — serialized with 500ms / 300ms inter-pool delays to avoid RPC `Retrying after 1000ms` spam.
+- **React 19 lint hardening.** Cleared 15 `eslint-plugin-react-hooks` errors (`set-state-in-effect`, `static-components`, `refs`, `impure-functions`) flagged by the strict Next 16 / React 19 rule set. Hoisted sub-components out of render bodies, replaced `Date.now()` in render with a ticking state interval, switched derived state from `useEffect + setState` to `useMemo`, and wrapped sync setState in effects via `queueMicrotask` + cancel flags. No behavioral changes — just removes cascading-render and SSR-mismatch footguns.
+- **`pnpm typecheck` script** added to `apps/web/package.json`.
+
 ### v1.1.5
 - **Liquidity Distribution chart — USD values.** Chart bars now represent USD value instead of raw token amounts. Fixes two bugs: incorrect `1e6` decimal divisor for all tokens (SOL has 9 decimals, not 6), and raw-amount comparison making SOL bars ~170x taller than equivalent USDC bins. Tooltip shows both token amount and USD value.
 

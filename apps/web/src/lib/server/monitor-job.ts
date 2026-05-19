@@ -91,7 +91,7 @@ async function runCheck() {
 
               addLog("warn", "rebalance.trigger", `Rebalance triggered — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${reason}) rpc=${entry.rpcUrl?.slice(0, 40)}`, { pool: poolAddr, reason, position: pos.publicKey.slice(0, 8) });
 
-              let txSigs: string[] = [];
+              const txSigs: string[] = [];
               let success = false;
               let error: string | undefined;
 

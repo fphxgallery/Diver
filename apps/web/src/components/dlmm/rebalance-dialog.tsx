@@ -3,13 +3,11 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { SignDialog } from "@/components/wallet/sign-dialog";
 import { useWalletStore } from "@/store/wallet-store";
 import { useMonitorStore } from "@/store/monitor-store";
-import { executeRebalance, type RebalancePreview } from "@/lib/meteora/rebalance";
+import { executeRebalance } from "@/lib/meteora/rebalance";
 import { signAndSendTransaction } from "@/lib/solana/send";
 import { StrategyType } from "@meteora-ag/dlmm";
 import { ArrowRight, ExternalLink, RefreshCw } from "lucide-react";
@@ -31,7 +29,7 @@ const STRATEGY_LABELS: Record<number, string> = {
   [StrategyType.BidAsk]: "Bid-Ask",
 };
 
-const BIN_COUNTS = [10, 20, 40, 69];
+const BIN_COUNTS = [2, 5, 10, 20, 40, 69];
 
 export function RebalanceDialog({ open, onClose, positionKey, poolAddress, pairName, lowerBinId, upperBinId }: Props) {
   const { wallets, activeId } = useWalletStore();

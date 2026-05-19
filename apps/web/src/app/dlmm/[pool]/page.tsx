@@ -63,7 +63,8 @@ export default function PoolDetailPage() {
 
   useEffect(() => {
     if (!active) return;
-    setPositionsLoading(true);
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) setPositionsLoading(true); });
     getUserPositions(poolAddress, active.publicKey)
       .then(({ userPositions, activeBinId: a, tokenXDecimals, tokenYDecimals }) => {
         setPositions(userPositions.map(p => ({
@@ -78,7 +79,8 @@ export default function PoolDetailPage() {
         })));
       })
       .catch(() => {})
-      .finally(() => setPositionsLoading(false));
+      .finally(() => { if (!cancelled) setPositionsLoading(false); });
+    return () => { cancelled = true; };
   }, [poolAddress, active, pair]);
 
   function refreshPositions() {

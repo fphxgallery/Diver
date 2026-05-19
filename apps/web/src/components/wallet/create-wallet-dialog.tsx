@@ -146,7 +146,7 @@ export function CreateWalletDialog({ open, onClose }: Props) {
               </p>
             </div>
             <DialogFooter>
-              <Button onClick={reset} className="w-full">I've saved my phrase — Done</Button>
+              <Button onClick={reset} className="w-full">I&apos;ve saved my phrase — Done</Button>
             </DialogFooter>
           </>
         )}
