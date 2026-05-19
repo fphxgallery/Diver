@@ -62,7 +62,7 @@ export async function searchPairs(query: string): Promise<DlmmPair[]> {
 }
 
 export function formatFeeRatio(ratio: number): string {
-  return `${(ratio * 100).toFixed(2)}%`;
+  return `${ratio.toFixed(2)}%`;
 }
 
 export function formatLiquidity(tvl: number): string {

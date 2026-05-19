@@ -162,7 +162,7 @@ export default function PoolDetailPage() {
             { label: "Volume 24h", value: formatVolume(pair.volume["24h"]), icon: TrendingUp },
             { label: "Fees 24h", value: formatVolume(pair.fees["24h"]), icon: Zap },
             { label: "Fee/TVL 24h", value: formatFeeRatio(pair.fee_tvl_ratio["24h"]), icon: Activity, highlight: true },
-            { label: "APY", value: `${pair.apy.toFixed(2)}%`, icon: TrendingUp },
+            { label: "APY", value: pair.apy > 1_000_000 ? "—" : `${pair.apy.toFixed(2)}%`, icon: TrendingUp },
             { label: "Current Price", value: pair.current_price < 0.01 ? pair.current_price.toExponential(3) : pair.current_price.toFixed(pair.current_price < 1 ? 6 : 4), icon: Activity },
           ].map(({ label, value, icon: Icon, highlight }) => (
             <Card key={label} className={cn("p-4 border-border", highlight && "border-green-500/30")}>
@@ -174,20 +174,20 @@ export default function PoolDetailPage() {
           ))}
         </div>
 
-        {/* Bin distribution */}
+        {/* Liquidity distribution */}
         <Card className="p-4 border-border mb-6">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-medium">Bin Distribution</h2>
+            <h2 className="font-medium">Liquidity Distribution</h2>
             <span className="text-xs text-muted-foreground">Active bin: <span className="text-primary">{activeBinId}</span></span>
           </div>
           {binsLoading ? (
             <div className="h-32 rounded-lg bg-secondary animate-pulse" />
           ) : (
-            <BinChart bins={bins} activeBinId={activeBinId} height={140} />
+            <BinChart bins={bins} activeBinId={activeBinId} height={140} tokenXSymbol={pair.token_x.symbol} tokenYSymbol={pair.token_y.symbol} />
           )}
           <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-green-500 inline-block" /> Liquidity</span>
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-primary inline-block" /> Active bin</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: "hsl(262 83% 68%)" }} /> {pair.token_x.symbol}</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: "hsl(186 85% 55%)" }} /> {pair.token_y.symbol}</span>
           </div>
         </Card>
 

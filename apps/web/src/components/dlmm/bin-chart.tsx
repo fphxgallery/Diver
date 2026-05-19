@@ -10,6 +10,8 @@ interface Props {
   minBinId?: number;
   maxBinId?: number;
   height?: number;
+  tokenXSymbol?: string;
+  tokenYSymbol?: string;
 }
 
 interface ChartBin {
@@ -30,20 +32,24 @@ const TOOLTIP_STYLE = {
   color: "hsl(240 10% 95%)",
 };
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: ChartBin }> }) {
+function CustomTooltip({ active, payload, tokenXSymbol, tokenYSymbol }: {
+  active?: boolean;
+  payload?: Array<{ payload: ChartBin }>;
+  tokenXSymbol?: string;
+  tokenYSymbol?: string;
+}) {
   if (!active || !payload?.[0]) return null;
   const bin = payload[0].payload;
   return (
     <div style={TOOLTIP_STYLE} className="p-2 space-y-0.5">
-      <div className="text-muted-foreground">Bin {bin.binId}</div>
-      <div>Price: {bin.price.toFixed(6)}</div>
-      <div className="text-blue-400">X: {bin.xLiq.toFixed(4)}</div>
-      <div className="text-purple-400">Y: {bin.yLiq.toFixed(4)}</div>
+      <div className="text-muted-foreground">Bin {bin.binId}{bin.active ? " (active)" : ""}</div>
+      <div className="text-purple-400">{tokenXSymbol ?? "X"}: {bin.xLiq.toFixed(4)}</div>
+      <div className="text-cyan-400">{tokenYSymbol ?? "Y"}: {bin.yLiq.toFixed(4)}</div>
     </div>
   );
 }
 
-export function BinChart({ bins, activeBinId, minBinId, maxBinId, height = 120 }: Props) {
+export function BinChart({ bins, activeBinId, minBinId, maxBinId, height = 120, tokenXSymbol, tokenYSymbol }: Props) {
   const data = useMemo<ChartBin[]>(() => {
     return bins.map(b => ({
       binId: b.binId,
@@ -67,23 +73,13 @@ export function BinChart({ bins, activeBinId, minBinId, maxBinId, height = 120 }
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} barCategoryGap={1} margin={{ top: 4, bottom: 0, left: 0, right: 0 }}>
         <XAxis dataKey="binId" hide />
-        <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
-        <ReferenceLine x={activeBinId} stroke="hsl(262 83% 68%)" strokeWidth={2} strokeDasharray="3 3" />
-        <Bar dataKey="total" radius={[2, 2, 0, 0]}>
-          {data.map(entry => (
-            <Cell
-              key={entry.binId}
-              fill={
-                entry.active
-                  ? "hsl(262 83% 68%)"
-                  : entry.inRange
-                  ? "hsl(160 84% 39%)"
-                  : "hsl(240 12% 20%)"
-              }
-              fillOpacity={entry.active ? 1 : entry.inRange ? 0.8 : 0.4}
-            />
-          ))}
-        </Bar>
+        <Tooltip
+          content={<CustomTooltip tokenXSymbol={tokenXSymbol} tokenYSymbol={tokenYSymbol} />}
+          cursor={{ fill: "rgba(255,255,255,0.04)" }}
+        />
+        <ReferenceLine x={activeBinId} stroke="rgba(255,255,255,0.6)" strokeWidth={1.5} />
+        <Bar dataKey="xLiq" stackId="liq" fill="hsl(262 83% 68%)" fillOpacity={0.85} radius={[0, 0, 0, 0]} isAnimationActive={false} />
+        <Bar dataKey="yLiq" stackId="liq" fill="hsl(186 85% 55%)" fillOpacity={0.85} radius={[2, 2, 0, 0]} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   );

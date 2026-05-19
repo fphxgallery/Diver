@@ -1,7 +1,7 @@
 import { Connection, PublicKey, VersionedTransaction, TransactionMessage } from "@solana/web3.js";
 import type { Keypair, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
-import DLMM, { StrategyType } from "@meteora-ag/dlmm";
+import DLMM, { StrategyType, getOrCreateATAInstruction, getTokenProgramId } from "@meteora-ag/dlmm";
 import { getConnection, type Cluster } from "./web3-compat-boundary";
 import type { RebalanceSettings } from "./rebalance";
 
@@ -77,11 +77,20 @@ export async function executeRebalanceWithKeypair(params: {
     }>;
   }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
 
+  // Ensure ATAs exist for both tokens (wallet may be missing one if position was opened single-sided)
+  const { tokenXProgram, tokenYProgram } = getTokenProgramId(pool.lbPair);
+  const [ataX, ataY] = await Promise.all([
+    getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
+    getOrCreateATAInstruction(connection, pool.tokenY.mint.address, params.keypair.publicKey, tokenYProgram, params.keypair.publicKey),
+  ]);
+  const ataInstructions = [ataX.ix, ataY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
+
   const { blockhash } = await connection.getLatestBlockhash();
   const txBase64s: string[] = [];
 
-  if (initBinArrayInstructions.length > 0) {
-    txBase64s.push(ixsToBase64(initBinArrayInstructions, params.keypair.publicKey, blockhash));
+  const preludeIxs = [...ataInstructions, ...initBinArrayInstructions];
+  if (preludeIxs.length > 0) {
+    txBase64s.push(ixsToBase64(preludeIxs, params.keypair.publicKey, blockhash));
   }
   txBase64s.push(ixsToBase64(rebalancePositionInstruction, params.keypair.publicKey, blockhash));
 
