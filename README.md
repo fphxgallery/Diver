@@ -102,6 +102,12 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.1.3
+- **Server monitor visibility fix.** Pinned log buffer, key store, and monitor state to `globalThis`. Next.js 16 turbopack standalone can duplicate server-only modules across the instrumentation runtime and route handlers; `addLog()` was writing to one buffer while `/api/logs` read from another, so Server Logs showed 0 entries even when the monitor was running.
+- **Stop check_now spam.** `ServerMonitor` sync effect now gates on a stable `poolKey` (sorted joined pool addresses) with a `useRef` last-synced marker, instead of depending on the `positions` object identity that flipped on every browser poll.
+- **Drop misleading 30s interval.** Server clamps to 60s minimum anyway.
+- **Scheduler heartbeat logs.** New `monitor.scheduled.arm` / `.fire` / `.skip` / `.error` events let you verify the `setTimeout` chain is alive without grepping container stdout.
+
 ### v1.1.2
 - Optional encrypted seed-at-rest for server monitor under `DIVER_SERVER_SECRET` (AES-256-GCM); auto-loaded on restart so auto-rebalance survives reboots.
 - Versioned persisted-store envelope, atomic write via tmp+rename, in-process write lock to prevent clobbering on concurrent updates.
