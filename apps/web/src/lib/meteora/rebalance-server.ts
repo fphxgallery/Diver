@@ -84,6 +84,8 @@ export async function executeRebalanceWithKeypair(params: {
       throw new Error(`Simulation failed. Logs:\n${logs?.join("\n") ?? e.message}`);
     }
     const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? (e.stack ?? "") : "";
+    console.error(`[diver] simulateRebalance assertion — pool=${params.poolAddress} pos=${params.positionKey}\nmsg: ${msg}\nstack: ${stack}`);
     if (msg.toLowerCase().includes("assertion failed")) {
       throw new Error(`Rebalance skipped: SDK assertion failed — position may be empty or in an invalid state (${msg})`);
     }

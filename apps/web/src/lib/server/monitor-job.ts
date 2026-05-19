@@ -17,9 +17,12 @@ export interface ServerMonitorState {
 // Pin to globalThis — Next.js per-route bundling can otherwise duplicate
 // this module so route handlers see a fresh state object while the
 // instrumentation runtime mutates a different one.
+const REBALANCE_SKIP_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
+
 const g = globalThis as unknown as {
   __diverMonitorState?: ServerMonitorState;
   __diverMonitorTimer?: NodeJS.Timeout | null;
+  __diverRebalanceSkipUntil?: Record<string, number>;
 };
 g.__diverMonitorState ??= {
   health: [],
@@ -28,7 +31,9 @@ g.__diverMonitorState ??= {
   lastRunAt: null,
   error: null,
 };
+g.__diverRebalanceSkipUntil ??= {};
 const state: ServerMonitorState = g.__diverMonitorState;
+const skipUntil: Record<string, number> = g.__diverRebalanceSkipUntil;
 
 const MAX_HISTORY = 50;
 
@@ -75,6 +80,13 @@ async function runCheck() {
               const reason = shouldAutoRebalance(h, entry.settings);
               if (!reason) continue;
 
+              const skipTs = skipUntil[pos.publicKey];
+              if (skipTs && Date.now() < skipTs) {
+                const minsLeft = Math.ceil((skipTs - Date.now()) / 60_000);
+                addLog("info", "rebalance.skip", `Rebalance skipped (cooling down ${minsLeft}m) — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}`, { pool: poolAddr, position: pos.publicKey.slice(0, 8) });
+                continue;
+              }
+
               addLog("warn", "rebalance.trigger", `Rebalance triggered — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${reason}) rpc=${entry.rpcUrl?.slice(0, 40)}`, { pool: poolAddr, reason, position: pos.publicKey.slice(0, 8) });
 
               let txSigs: string[] = [];
@@ -101,7 +113,13 @@ async function runCheck() {
                 addLog("info", "rebalance.success", `Rebalance succeeded — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${txSigs.length} tx)`, { txs: txSigs.length, pool: poolAddr });
               } catch (e) {
                 error = e instanceof Error ? e.message : "Rebalance failed";
-                addLog("error", "rebalance.error", `Rebalance failed — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}`, { pool: poolAddr });
+                const isSkip = error.toLowerCase().includes("skipped") || error.toLowerCase().includes("assertion failed");
+                if (isSkip) {
+                  skipUntil[pos.publicKey] = Date.now() + REBALANCE_SKIP_COOLDOWN_MS;
+                  addLog("warn", "rebalance.skip", `Rebalance skipped — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error} (cooling down 30m)`, { pool: poolAddr });
+                } else {
+                  addLog("error", "rebalance.error", `Rebalance failed — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}`, { pool: poolAddr });
+                }
               }
 
               const record: RebalanceRecord = {
