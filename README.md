@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.1.5
+- **Liquidity Distribution chart — USD values.** Chart bars now represent USD value instead of raw token amounts. Fixes two bugs: incorrect `1e6` decimal divisor for all tokens (SOL has 9 decimals, not 6), and raw-amount comparison making SOL bars ~170x taller than equivalent USDC bins. Tooltip shows both token amount and USD value.
+
 ### v1.1.4
 - **Server Logs layout.** Added horizontal padding and `max-w-6xl mx-auto` so the log table no longer slams the viewport edges on wide screens.
 - **Log entry cap.** Server Logs page displays the 60 most recent entries per active filter. Count label shows "X of Y entries" so you can see how many are hidden.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { BarChart, Bar, Cell, XAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import type { BinData } from "@/lib/meteora/positions";
 
 interface Props {
@@ -12,6 +12,10 @@ interface Props {
   height?: number;
   tokenXSymbol?: string;
   tokenYSymbol?: string;
+  tokenXDecimals?: number;
+  tokenYDecimals?: number;
+  tokenXPrice?: number;
+  tokenYPrice?: number;
 }
 
 interface ChartBin {
@@ -19,6 +23,10 @@ interface ChartBin {
   price: number;
   xLiq: number;
   yLiq: number;
+  xUsd: number;
+  yUsd: number;
+  xBar: number;
+  yBar: number;
   total: number;
   active: boolean;
   inRange: boolean;
@@ -40,30 +48,46 @@ function CustomTooltip({ active, payload, tokenXSymbol, tokenYSymbol }: {
 }) {
   if (!active || !payload?.[0]) return null;
   const bin = payload[0].payload;
+  const showUsd = bin.xUsd > 0 || bin.yUsd > 0;
   return (
     <div style={TOOLTIP_STYLE} className="p-2 space-y-0.5">
       <div className="text-muted-foreground">Bin {bin.binId}{bin.active ? " (active)" : ""}</div>
-      <div className="text-purple-400">{tokenXSymbol ?? "X"}: {bin.xLiq.toFixed(4)}</div>
-      <div className="text-cyan-400">{tokenYSymbol ?? "Y"}: {bin.yLiq.toFixed(4)}</div>
+      <div className="text-purple-400">
+        {tokenXSymbol ?? "X"}: {bin.xLiq.toFixed(4)}{showUsd ? ` ($${bin.xUsd.toFixed(2)})` : ""}
+      </div>
+      <div className="text-cyan-400">
+        {tokenYSymbol ?? "Y"}: {bin.yLiq.toFixed(4)}{showUsd ? ` ($${bin.yUsd.toFixed(2)})` : ""}
+      </div>
     </div>
   );
 }
 
-export function BinChart({ bins, activeBinId, minBinId, maxBinId, height = 120, tokenXSymbol, tokenYSymbol }: Props) {
+export function BinChart({ bins, activeBinId, minBinId, maxBinId, height = 120, tokenXSymbol, tokenYSymbol, tokenXDecimals = 6, tokenYDecimals = 6, tokenXPrice, tokenYPrice }: Props) {
   const data = useMemo<ChartBin[]>(() => {
-    return bins.map(b => ({
-      binId: b.binId,
-      price: parseFloat(b.pricePerToken),
-      xLiq: b.xAmount.isZero() ? 0 : parseFloat(b.xAmount.toString()) / 1e6,
-      yLiq: b.yAmount.isZero() ? 0 : parseFloat(b.yAmount.toString()) / 1e6,
-      total: (b.xAmount.isZero() ? 0 : parseFloat(b.xAmount.toString()) / 1e6) +
-             (b.yAmount.isZero() ? 0 : parseFloat(b.yAmount.toString()) / 1e6),
-      active: b.binId === activeBinId,
-      inRange: minBinId !== undefined && maxBinId !== undefined
-        ? b.binId >= minBinId && b.binId <= maxBinId
-        : true,
-    }));
-  }, [bins, activeBinId, minBinId, maxBinId]);
+    return bins.map(b => {
+      const xLiq = b.xAmount.isZero() ? 0 : parseFloat(b.xAmount.toString()) / 10 ** tokenXDecimals;
+      const yLiq = b.yAmount.isZero() ? 0 : parseFloat(b.yAmount.toString()) / 10 ** tokenYDecimals;
+      const xUsd = tokenXPrice ? xLiq * tokenXPrice : 0;
+      const yUsd = tokenYPrice ? yLiq * tokenYPrice : 0;
+      const xBar = tokenXPrice ? xUsd : xLiq;
+      const yBar = tokenYPrice ? yUsd : yLiq;
+      return {
+        binId: b.binId,
+        price: parseFloat(b.pricePerToken),
+        xLiq,
+        yLiq,
+        xUsd,
+        yUsd,
+        total: xBar + yBar,
+        active: b.binId === activeBinId,
+        inRange: minBinId !== undefined && maxBinId !== undefined
+          ? b.binId >= minBinId && b.binId <= maxBinId
+          : true,
+        xBar,
+        yBar,
+      };
+    });
+  }, [bins, activeBinId, minBinId, maxBinId, tokenXDecimals, tokenYDecimals, tokenXPrice, tokenYPrice]);
 
   if (data.length === 0) {
     return <div style={{ height }} className="flex items-center justify-center text-muted-foreground text-xs">No bin data</div>;
@@ -78,8 +102,8 @@ export function BinChart({ bins, activeBinId, minBinId, maxBinId, height = 120, 
           cursor={{ fill: "rgba(255,255,255,0.04)" }}
         />
         <ReferenceLine x={activeBinId} stroke="rgba(255,255,255,0.6)" strokeWidth={1.5} />
-        <Bar dataKey="xLiq" stackId="liq" fill="hsl(262 83% 68%)" fillOpacity={0.85} radius={[0, 0, 0, 0]} isAnimationActive={false} />
-        <Bar dataKey="yLiq" stackId="liq" fill="hsl(186 85% 55%)" fillOpacity={0.85} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+        <Bar dataKey="xBar" stackId="liq" fill="hsl(262 83% 68%)" fillOpacity={0.85} radius={[0, 0, 0, 0]} isAnimationActive={false} />
+        <Bar dataKey="yBar" stackId="liq" fill="hsl(186 85% 55%)" fillOpacity={0.85} radius={[2, 2, 0, 0]} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   );

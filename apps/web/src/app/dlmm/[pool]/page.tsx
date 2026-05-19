@@ -183,7 +183,7 @@ export default function PoolDetailPage() {
           {binsLoading ? (
             <div className="h-32 rounded-lg bg-secondary animate-pulse" />
           ) : (
-            <BinChart bins={bins} activeBinId={activeBinId} height={140} tokenXSymbol={pair.token_x.symbol} tokenYSymbol={pair.token_y.symbol} />
+            <BinChart bins={bins} activeBinId={activeBinId} height={140} tokenXSymbol={pair.token_x.symbol} tokenYSymbol={pair.token_y.symbol} tokenXDecimals={pair.token_x.decimals} tokenYDecimals={pair.token_y.decimals} tokenXPrice={pair.token_x.price} tokenYPrice={pair.token_y.price} />
           )}
           <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: "hsl(262 83% 68%)" }} /> {pair.token_x.symbol}</span>

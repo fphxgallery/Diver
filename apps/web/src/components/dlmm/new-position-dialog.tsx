@@ -222,7 +222,7 @@ export function NewPositionDialog({ open, onClose, pair }: Props) {
               {binsLoading ? (
                 <div className="h-24 rounded-lg bg-secondary animate-pulse" />
               ) : (
-                <BinChart bins={bins} activeBinId={activeBinId} minBinId={minBinId} maxBinId={maxBinId} height={100} />
+                <BinChart bins={bins} activeBinId={activeBinId} minBinId={minBinId} maxBinId={maxBinId} height={100} tokenXDecimals={pair.token_x.decimals} tokenYDecimals={pair.token_y.decimals} tokenXPrice={pair.token_x.price} tokenYPrice={pair.token_y.price} />
               )}
             </div>
 
