@@ -120,7 +120,7 @@ export default function DashboardPage() {
                 icon={Wallet}
                 href="/wallets"
               />
-              <StatCard label="DLMM Positions" value={userPositions.length > 0 ? String(userPositions.length) : "—"} icon={Layers} href="/dlmm" />
+              <StatCard label="DLMM Positions" value={String(userPositions.length)} icon={Layers} href="/dlmm" />
               <StatCard
                 label="Total Value"
                 value={!hasApiKey ? "—" : lpPending ? "..." : `$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}

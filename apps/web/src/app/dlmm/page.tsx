@@ -108,6 +108,9 @@ export default function DlmmPage() {
   useEffect(() => {
     if (!search.trim()) { setSearchResults(filteredPairs.slice(0, 25)); return; }
     const t = setTimeout(async () => {
+      const term = search.toLowerCase();
+      const local = filteredPairs.filter(p => p.name.toLowerCase().includes(term) || p.address.toLowerCase().includes(term));
+      if (local.length > 0) { setSearchResults(local.slice(0, 25)); return; }
       const results = await searchPairs(search);
       setSearchResults(results);
     }, 300);
@@ -212,7 +215,10 @@ export default function DlmmPage() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {userPositions.map(pos => <PositionCard key={pos.publicKey} position={pos} />)}
+                {userPositions.map(pos => {
+                  const p = pairs.find(p => p.address === pos.lbPair);
+                  return <PositionCard key={pos.publicKey} position={pos} tokenXPrice={p?.token_x.price} tokenYPrice={p?.token_y.price} />;
+                })}
               </div>
             )}
           </div>

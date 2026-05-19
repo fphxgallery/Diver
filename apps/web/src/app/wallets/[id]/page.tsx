@@ -128,17 +128,19 @@ export default function WalletPortfolioPage({ params }: { params: Promise<{ id: 
           ) : (
             <div className="space-y-2">
               {items.map(item => (
-                <Card key={item.mint} className="p-3 border-border bg-card flex items-center gap-3">
-                  <TokenLogo symbol={item.symbol} logoURI={item.logoURI} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{item.symbol}</div>
-                    <div className="text-xs text-muted-foreground truncate">{item.name}</div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-medium text-sm">
-                      {item.balance.toLocaleString("en-US", { maximumFractionDigits: item.decimals > 6 ? 4 : item.decimals })}
+                <Card key={item.mint} className="border-border bg-card">
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <TokenLogo symbol={item.symbol} logoURI={item.logoURI} />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{item.symbol}</div>
+                      <div className="text-xs text-muted-foreground truncate">{item.name}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{item.symbol}</div>
+                    <div className="text-right shrink-0">
+                      <div className="font-medium text-sm">
+                        {item.balance.toLocaleString("en-US", { maximumFractionDigits: item.decimals > 6 ? 4 : item.decimals })}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{item.symbol}</div>
+                    </div>
                   </div>
                 </Card>
               ))}

@@ -156,12 +156,14 @@ export default function PoolDetailPage() {
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           {[
             { label: "TVL", value: formatLiquidity(pair.tvl), icon: Droplets },
             { label: "Volume 24h", value: formatVolume(pair.volume["24h"]), icon: TrendingUp },
             { label: "Fees 24h", value: formatVolume(pair.fees["24h"]), icon: Zap },
             { label: "Fee/TVL 24h", value: formatFeeRatio(pair.fee_tvl_ratio["24h"]), icon: Activity, highlight: true },
+            { label: "APY", value: `${pair.apy.toFixed(2)}%`, icon: TrendingUp },
+            { label: "Current Price", value: pair.current_price < 0.01 ? pair.current_price.toExponential(3) : pair.current_price.toFixed(pair.current_price < 1 ? 6 : 4), icon: Activity },
           ].map(({ label, value, icon: Icon, highlight }) => (
             <Card key={label} className={cn("p-4 border-border", highlight && "border-green-500/30")}>
               <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
@@ -214,7 +216,7 @@ export default function PoolDetailPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {positions.map(pos => <PositionCard key={pos.publicKey} position={pos} />)}
+              {positions.map(pos => <PositionCard key={pos.publicKey} position={pos} tokenXPrice={pair.token_x.price} tokenYPrice={pair.token_y.price} />)}
             </div>
           )}
         </div>

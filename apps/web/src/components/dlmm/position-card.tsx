@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,11 +34,13 @@ interface UserPositionWithMeta {
 
 interface Props {
   position: UserPositionWithMeta;
+  tokenXPrice?: number;
+  tokenYPrice?: number;
 }
 
 type Action = "claim" | "remove" | null;
 
-export function PositionCard({ position }: Props) {
+export function PositionCard({ position, tokenXPrice, tokenYPrice }: Props) {
   const { wallets, activeId } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
   const invalidate = useDlmmStore(s => s.invalidatePositions);
@@ -52,23 +54,32 @@ export function PositionCard({ position }: Props) {
   const rangeProgress = !position.inRange ? 0 :
     ((position.activeBinId - position.lowerBinId) / rangeWidth) * 100;
 
+  useEffect(() => {
+    if (!txSig) return;
+    const t = setTimeout(() => setTxSig(""), 10_000);
+    return () => clearTimeout(t);
+  }, [txSig]);
+
   async function handleAction(password: string) {
     if (!active) throw new Error("No wallet");
+    setError("");
     const cluster = "mainnet-beta";
-
-    let sigs: string[];
-    if (action === "claim") {
-      const tx = await buildClaimFees({ poolAddress: position.lbPair, positionKey: position.publicKey, wallet: active, password, cluster });
-      sigs = [await signAndSendTransaction(tx, active, password)];
-    } else {
-      const txs = await buildRemoveLiquidity({ poolAddress: position.lbPair, positionKey: position.publicKey, wallet: active, password, cluster });
-      sigs = [];
-      for (const tx of txs) sigs.push(await signAndSendTransaction(tx, active, password));
+    try {
+      let sigs: string[];
+      if (action === "claim") {
+        const tx = await buildClaimFees({ poolAddress: position.lbPair, positionKey: position.publicKey, wallet: active, password, cluster });
+        sigs = [await signAndSendTransaction(tx, active, password)];
+      } else {
+        const txs = await buildRemoveLiquidity({ poolAddress: position.lbPair, positionKey: position.publicKey, wallet: active, password, cluster });
+        sigs = [];
+        for (const tx of txs) sigs.push(await signAndSendTransaction(tx, active, password));
+      }
+      setTxSig(sigs[sigs.length - 1]);
+      invalidate(active.publicKey);
+      setAction(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
-
-    setTxSig(sigs[sigs.length - 1]);
-    invalidate(active.publicKey);
-    setAction(null);
   }
 
   return (
@@ -107,6 +118,9 @@ export function PositionCard({ position }: Props) {
         <div>
           <div className="text-muted-foreground text-xs mb-0.5">{position.tokenXSymbol}</div>
           <div className="font-medium">{(parseFloat(position.totalXAmount) / Math.pow(10, position.tokenXDecimals)).toFixed(4)}</div>
+          {tokenXPrice != null && (
+            <div className="text-xs text-muted-foreground">${((parseFloat(position.totalXAmount) / Math.pow(10, position.tokenXDecimals)) * tokenXPrice).toFixed(2)}</div>
+          )}
           {new BN(position.feeX).gtn(0) && (
             <div className="text-xs text-green-400">+{(parseFloat(position.feeX) / Math.pow(10, position.tokenXDecimals)).toFixed(6)} fees</div>
           )}
@@ -114,6 +128,9 @@ export function PositionCard({ position }: Props) {
         <div>
           <div className="text-muted-foreground text-xs mb-0.5">{position.tokenYSymbol}</div>
           <div className="font-medium">{(parseFloat(position.totalYAmount) / Math.pow(10, position.tokenYDecimals)).toFixed(4)}</div>
+          {tokenYPrice != null && (
+            <div className="text-xs text-muted-foreground">${((parseFloat(position.totalYAmount) / Math.pow(10, position.tokenYDecimals)) * tokenYPrice).toFixed(2)}</div>
+          )}
           {new BN(position.feeY).gtn(0) && (
             <div className="text-xs text-green-400">+{(parseFloat(position.feeY) / Math.pow(10, position.tokenYDecimals)).toFixed(6)} fees</div>
           )}
