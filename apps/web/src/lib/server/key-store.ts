@@ -23,8 +23,8 @@ const cleanup = setInterval(() => {
 // Don't keep the process alive just for cleanup
 if (cleanup.unref) cleanup.unref();
 
-export function setKey(walletId: string, entry: Omit<KeyEntry, "expiresAt">, ttlMs: number) {
-  store.set(walletId, { ...entry, expiresAt: Date.now() + ttlMs });
+export function setKey(walletId: string, entry: Omit<KeyEntry, "expiresAt">) {
+  store.set(walletId, { ...entry, expiresAt: Infinity });
 }
 
 export function getKey(walletId: string): KeyEntry | null {

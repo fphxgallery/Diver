@@ -77,7 +77,7 @@ export async function executeRebalanceWithKeypair(params: {
     }>;
   }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
 
-  // Ensure ATAs exist for both tokens (wallet may be missing one if position was opened single-sided)
+  // Ensure ATAs exist before simulation — missing ATA causes rebalancePosition simulation to fail
   const { tokenXProgram, tokenYProgram } = getTokenProgramId(pool.lbPair);
   const [ataX, ataY] = await Promise.all([
     getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
@@ -85,12 +85,26 @@ export async function executeRebalanceWithKeypair(params: {
   ]);
   const ataInstructions = [ataX.ix, ataY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
 
+  // If any ATAs are missing, create them on-chain now so rebalancePosition simulation succeeds
+  if (ataInstructions.length > 0) {
+    const { blockhash: ataBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const ataTx = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: params.keypair.publicKey,
+        recentBlockhash: ataBlockhash,
+        instructions: ataInstructions,
+      }).compileToV0Message()
+    );
+    ataTx.sign([params.keypair]);
+    const ataSig = await connection.sendRawTransaction(ataTx.serialize(), { skipPreflight: false, maxRetries: 3 });
+    await connection.confirmTransaction({ signature: ataSig, blockhash: ataBlockhash, lastValidBlockHeight }, "confirmed");
+  }
+
   const { blockhash } = await connection.getLatestBlockhash();
   const txBase64s: string[] = [];
 
-  const preludeIxs = [...ataInstructions, ...initBinArrayInstructions];
-  if (preludeIxs.length > 0) {
-    txBase64s.push(ixsToBase64(preludeIxs, params.keypair.publicKey, blockhash));
+  if (initBinArrayInstructions.length > 0) {
+    txBase64s.push(ixsToBase64(initBinArrayInstructions, params.keypair.publicKey, blockhash));
   }
   txBase64s.push(ixsToBase64(rebalancePositionInstruction, params.keypair.publicKey, blockhash));
 

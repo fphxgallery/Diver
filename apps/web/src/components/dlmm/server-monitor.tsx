@@ -51,7 +51,6 @@ function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const active = wallets.find(w => w.id === activeId);
   const { settings } = useMonitorStore();
   const [password, setPassword] = useState("");
-  const [ttl, setTtl] = useState(8);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -73,7 +72,6 @@ function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void })
           walletId: active.id,
           publicKey: active.publicKey,
           seedBase64,
-          ttlHours: ttl,
           settings,
           poolAddresses: [],
           pairNames: {},
@@ -119,21 +117,8 @@ function UnlockDialog({ open, onClose }: { open: boolean; onClose: () => void })
               autoFocus
             />
           </div>
-          <div>
-            <Label className="mb-1.5 block">Session TTL</Label>
-            <div className="flex gap-2">
-              {[4, 8, 24].map(h => (
-                <button key={h} onClick={() => setTtl(h)}
-                  className={cn("flex-1 py-1.5 rounded-lg text-sm transition-colors",
-                    ttl === h ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"
-                  )}>
-                  {h}h
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="text-xs text-muted-foreground bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
-            ⚠ Key held in server memory only. Cleared on server restart or TTL expiry.
+            ⚠ Key held in server memory only. Cleared on server restart or manual lock.
           </div>
 {error && <p className="text-destructive text-sm">{error}</p>}
         </div>
@@ -182,9 +167,6 @@ export function ServerMonitor() {
       body: JSON.stringify({ action: "check_now" }),
     })).then(() => setTimeout(refresh, 2000));
   }, [isUnlocked, active?.id, positions]);
-  const myEntry = status?.unlocked.find(u => u.walletId === active?.id);
-  const ttlMs = myEntry ? myEntry.expiresAt - Date.now() : 0;
-  const ttlHours = Math.max(0, ttlMs / 3_600_000).toFixed(1);
 
   const outOfRange = status?.health.filter(h => !h.inRange).length ?? 0;
   const nearEdge = status?.health.filter(h => h.inRange && h.edgeProximityPct < 10).length ?? 0;
@@ -225,7 +207,7 @@ export function ServerMonitor() {
             {isUnlocked ? (
               <Badge className="bg-green-500/15 text-green-400 border-0 text-xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block mr-1 animate-pulse" />
-                Active · {ttlHours}h left
+                Active
               </Badge>
             ) : (
               <Badge className="bg-secondary text-muted-foreground border-0 text-xs">Locked</Badge>

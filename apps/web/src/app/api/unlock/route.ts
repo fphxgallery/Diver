@@ -13,7 +13,6 @@ interface UnlockBody {
   publicKey: string;
   /** Base64-encoded 32-byte seed (client decrypts, never sends password) */
   seedBase64: string;
-  ttlHours?: number;
   settings?: Partial<MonitorSettings>;
   poolAddresses?: string[];
   pairNames?: Record<string, string>;
@@ -31,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { walletId, publicKey, seedBase64, ttlHours = 8, settings, poolAddresses = [], pairNames = {}, rpcUrl = "https://api.mainnet-beta.solana.com" } = body;
+  const { walletId, publicKey, seedBase64, settings, poolAddresses = [], pairNames = {}, rpcUrl = "https://api.mainnet-beta.solana.com" } = body;
 
   if (!walletId || !publicKey || !seedBase64) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -50,9 +49,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Invalid seed" }, { status: 400 });
   }
 
-  const ttlMs = ttlHours * 60 * 60 * 1000;
-  const expiresAt = Date.now() + ttlMs;
-
   setKey(walletId, {
     keypair,
     publicKey,
@@ -60,9 +56,9 @@ export async function POST(req: NextRequest) {
     poolAddresses,
     pairNames,
     rpcUrl,
-  }, ttlMs);
+  });
 
-  addLog("info", "wallet.unlock", `Wallet unlocked — ${publicKey.slice(0, 8)}…${publicKey.slice(-4)} (TTL ${ttlHours}h)`, { walletId, publicKey: publicKey.slice(0, 8) });
+  addLog("info", "wallet.unlock", `Wallet unlocked — ${publicKey.slice(0, 8)}…${publicKey.slice(-4)}`, { walletId, publicKey: publicKey.slice(0, 8) });
 
-  return NextResponse.json({ ok: true, expiresAt });
+  return NextResponse.json({ ok: true });
 }

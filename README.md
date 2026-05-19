@@ -79,7 +79,7 @@ The server monitor runs inside the Next.js process and keeps checking your posit
 3. The server holds the keypair in memory (never on disk) and auto-rebalances when triggers fire
 4. Your configured RPC URL is forwarded to the server so it uses the same endpoint as the browser
 5. Check interval respects Settings → Check Interval (minimum 60s server-side to avoid rate limits)
-6. Click **Lock** to zero and remove the key, or it expires automatically after the configured TTL
+6. The key stays active until you click **Lock** or the server restarts — no TTL expiry
 
 ## Systemd (VPS/server)
 
@@ -92,7 +92,7 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 ## Security notes
 
 - Private keys never leave the browser unencrypted. AES-256-GCM encryption happens client-side; the password never touches the server.
-- Server monitor: only a 32-byte seed is sent over HTTPS. The keypair is held in server memory only — never written to disk — and zeroed on lock or expiry.
+- Server monitor: only a 32-byte seed is sent over HTTPS. The keypair is held in server memory only — never written to disk — and zeroed on lock or server restart.
 - LP Agent API key and Jupiter API key are stored in `sessionStorage` (cleared on browser close), not persisted to disk.
 - Use a private RPC endpoint in production to avoid rate limits and improve reliability.
 

@@ -132,9 +132,14 @@ async function runCheck() {
 
 function scheduleNext() {
   pollTimer = setTimeout(async () => {
-    const entries = getAll();
-    if (entries.length > 0) await runCheck();
-    scheduleNext();
+    try {
+      const entries = getAll();
+      if (entries.length > 0) await runCheck();
+    } catch (e) {
+      console.error("[diver] scheduleNext error:", e);
+    } finally {
+      scheduleNext();
+    }
   }, getIntervalMs());
   if (pollTimer.unref) pollTimer.unref();
 }
