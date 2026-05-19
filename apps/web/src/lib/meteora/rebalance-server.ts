@@ -75,7 +75,8 @@ export async function executeRebalanceWithKeypair(params: {
     await connection.confirmTransaction({ signature: ataSig, blockhash: ataBlockhash, lastValidBlockHeight }, "confirmed");
   }
 
-  // Dynamic 50/50 top-up: compute how much of the deficit token to add from wallet
+  // Dynamic 50/50 top-up: add deficit token + withdraw equivalent excess to keep total size stable.
+  // If wallet has no deficit token, skip entirely — never withdraw excess without a matching add.
   if (params.topUpEnabled) {
     try {
       const decimalsX = pool.tokenX.mint.decimals;
@@ -96,20 +97,28 @@ export async function executeRebalanceWithKeypair(params: {
       const walletYRaw = parseInt(yBal?.value.amount ?? "0");
 
       if (xValueInY < yValueInY && walletXRaw > 0) {
-        const deficitInY = yValueInY - xValueInY;
-        const xNeededRaw = Math.floor((deficitInY / priceXperY) * 10 ** decimalsX);
+        // X is short, Y is excess — add X from wallet, withdraw equivalent Y
+        const fullDeficitInY = yValueInY - xValueInY;
+        const xNeededRaw = Math.floor((fullDeficitInY / priceXperY) * 10 ** decimalsX);
         const xTopUp = Math.min(xNeededRaw, walletXRaw);
         if (xTopUp > 0) {
+          const actualDeficitInY = (xTopUp / 10 ** decimalsX) * priceXperY;
+          const yWithdrawBps = Math.min(10000, Math.floor((actualDeficitInY / yValueInY) * 10000));
           s.topUpX = new BN(xTopUp);
-          console.log(`[diver] topUp50_50: adding ${xTopUp} raw X (${(xTopUp / 10 ** decimalsX).toFixed(6)}) to close $${deficitInY.toFixed(4)} Y deficit`);
+          s.yWithdrawBps = yWithdrawBps;
+          console.log(`[diver] topUp50_50: +${(xTopUp / 10 ** decimalsX).toFixed(6)} X, withdraw ${yWithdrawBps}bps Y (~${actualDeficitInY.toFixed(4)} Y)`);
         }
       } else if (yValueInY < xValueInY && walletYRaw > 0) {
-        const deficitInY = xValueInY - yValueInY;
-        const yTopUpRaw = Math.floor(deficitInY * 10 ** decimalsY);
-        const yTopUp = Math.min(yTopUpRaw, walletYRaw);
+        // Y is short, X is excess — add Y from wallet, withdraw equivalent X
+        const fullDeficitInY = xValueInY - yValueInY;
+        const yNeededRaw = Math.floor(fullDeficitInY * 10 ** decimalsY);
+        const yTopUp = Math.min(yNeededRaw, walletYRaw);
         if (yTopUp > 0) {
+          const actualDeficitInY = yTopUp / 10 ** decimalsY;
+          const xWithdrawBps = Math.min(10000, Math.floor((actualDeficitInY / xValueInY) * 10000));
           s.topUpY = new BN(yTopUp);
-          console.log(`[diver] topUp50_50: adding ${yTopUp} raw Y (${(yTopUp / 10 ** decimalsY).toFixed(6)}) to close $${deficitInY.toFixed(4)} Y deficit`);
+          s.xWithdrawBps = xWithdrawBps;
+          console.log(`[diver] topUp50_50: +${(yTopUp / 10 ** decimalsY).toFixed(6)} Y, withdraw ${xWithdrawBps}bps X (~${actualDeficitInY.toFixed(4)} Y equiv)`);
         }
       }
     } catch (e) {
