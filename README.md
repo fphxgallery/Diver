@@ -100,6 +100,15 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 - LP Agent API key and Jupiter API key are stored in `sessionStorage` (cleared on browser close), not persisted to disk.
 - Use a private RPC endpoint in production to avoid rate limits and improve reliability.
 
+## Changelog
+
+### v1.1.2
+- Optional encrypted seed-at-rest for server monitor under `DIVER_SERVER_SECRET` (AES-256-GCM); auto-loaded on restart so auto-rebalance survives reboots.
+- Versioned persisted-store envelope, atomic write via tmp+rename, in-process write lock to prevent clobbering on concurrent updates.
+- Create ATAs before `rebalancePosition()` simulation to fix rebalance failures on fresh accounts.
+- Docker: `/app/data` volume mount for persisted state.
+- UI: top-padding polish on dashboard / wallets / swap / transfer / logs; max-width on DLMM tabs.
+
 ## License
 
 MIT
