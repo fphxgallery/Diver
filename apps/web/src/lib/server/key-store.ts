@@ -12,17 +12,23 @@ export interface KeyEntry {
   rpcUrl: string;
 }
 
-// Module-level singleton — survives across requests in the same Node.js process
-const store = new Map<string, KeyEntry>();
+// Pin singleton to globalThis so the instrumentation runtime and route
+// handlers share the same map — Next.js can otherwise duplicate module
+// instances across per-route bundles.
+const g = globalThis as unknown as { __diverKeyStore?: Map<string, KeyEntry>; __diverKeyStoreCleanup?: NodeJS.Timeout };
+g.__diverKeyStore ??= new Map<string, KeyEntry>();
+const store: Map<string, KeyEntry> = g.__diverKeyStore;
 
-const cleanup = setInterval(() => {
-  const now = Date.now();
-  for (const [id, entry] of store) {
-    if (entry.expiresAt < now) store.delete(id);
-  }
-}, 60_000);
-// Don't keep the process alive just for cleanup
-if (cleanup.unref) cleanup.unref();
+if (!g.__diverKeyStoreCleanup) {
+  const cleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [id, entry] of store) {
+      if (entry.expiresAt < now) store.delete(id);
+    }
+  }, 60_000);
+  if (cleanup.unref) cleanup.unref();
+  g.__diverKeyStoreCleanup = cleanup;
+}
 
 export function setKey(walletId: string, entry: Omit<KeyEntry, "expiresAt">) {
   store.set(walletId, { ...entry, expiresAt: Infinity });

@@ -14,16 +14,23 @@ export interface ServerMonitorState {
   error: string | null;
 }
 
-const state: ServerMonitorState = {
+// Pin to globalThis — Next.js per-route bundling can otherwise duplicate
+// this module so route handlers see a fresh state object while the
+// instrumentation runtime mutates a different one.
+const g = globalThis as unknown as {
+  __diverMonitorState?: ServerMonitorState;
+  __diverMonitorTimer?: NodeJS.Timeout | null;
+};
+g.__diverMonitorState ??= {
   health: [],
   history: [],
   running: false,
   lastRunAt: null,
   error: null,
 };
+const state: ServerMonitorState = g.__diverMonitorState;
 
 const MAX_HISTORY = 50;
-let pollTimer: NodeJS.Timeout | null = null;
 
 function getIntervalMs(): number {
   const entries = getAll();
@@ -132,7 +139,7 @@ async function runCheck() {
 
 function scheduleNext() {
   const ms = getIntervalMs();
-  pollTimer = setTimeout(async () => {
+  g.__diverMonitorTimer = setTimeout(async () => {
     try {
       const entries = getAll();
       if (entries.length > 0) {
@@ -148,12 +155,12 @@ function scheduleNext() {
       scheduleNext();
     }
   }, ms);
-  if (pollTimer.unref) pollTimer.unref();
+  if (g.__diverMonitorTimer.unref) g.__diverMonitorTimer.unref();
   addLog("info", "monitor.scheduled.arm", `Next check in ${Math.round(ms / 1000)}s`, { intervalMs: ms });
 }
 
 export function startServerMonitor() {
-  if (pollTimer) return;
+  if (g.__diverMonitorTimer) return;
   addLog("info", "monitor.start", "Server monitor started");
   runCheck();
   scheduleNext();
@@ -161,9 +168,9 @@ export function startServerMonitor() {
 }
 
 export function stopServerMonitor() {
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
+  if (g.__diverMonitorTimer) {
+    clearTimeout(g.__diverMonitorTimer);
+    g.__diverMonitorTimer = null;
   }
 }
 
