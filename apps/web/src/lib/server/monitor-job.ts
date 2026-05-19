@@ -131,17 +131,25 @@ async function runCheck() {
 }
 
 function scheduleNext() {
+  const ms = getIntervalMs();
   pollTimer = setTimeout(async () => {
     try {
       const entries = getAll();
-      if (entries.length > 0) await runCheck();
+      if (entries.length > 0) {
+        addLog("info", "monitor.scheduled.fire", `Scheduled tick — ${entries.length} wallet(s)`, { wallets: entries.length });
+        await runCheck();
+      } else {
+        addLog("info", "monitor.scheduled.skip", "Scheduled tick — no unlocked wallets, skipping");
+      }
     } catch (e) {
       console.error("[diver] scheduleNext error:", e);
+      addLog("error", "monitor.scheduled.error", e instanceof Error ? e.message : String(e));
     } finally {
       scheduleNext();
     }
-  }, getIntervalMs());
+  }, ms);
   if (pollTimer.unref) pollTimer.unref();
+  addLog("info", "monitor.scheduled.arm", `Next check in ${Math.round(ms / 1000)}s`, { intervalMs: ms });
 }
 
 export function startServerMonitor() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -151,11 +151,21 @@ export function ServerMonitor() {
 
   const isUnlocked = status?.unlocked.some(u => u.walletId === active?.id) ?? false;
 
-  // Push position pools to server then immediately trigger a check
+  // Sync position pools to server when the pool set actually changes.
+  // Gate on stringified pool list — `positions` object identity flips on every
+  // browser-side refresh, so depending on it spammed check_now every few seconds.
+  const userPositions = active ? (positions[active.publicKey] ?? []) : [];
+  const poolKey = useMemo(
+    () => [...new Set(userPositions.map(p => p.lbPair))].sort().join(","),
+    [userPositions]
+  );
+  const lastSyncedPoolKey = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!isUnlocked || !active) return;
-    const userPositions = positions[active.publicKey] ?? [];
-    if (userPositions.length === 0) return;
+    if (!isUnlocked || !active || userPositions.length === 0) return;
+    if (lastSyncedPoolKey.current === poolKey) return;
+    lastSyncedPoolKey.current = poolKey;
+
     const poolAddresses = [...new Set(userPositions.map(p => p.lbPair))];
     const pairNames = Object.fromEntries(userPositions.map(p => [p.lbPair, p.pairName]));
     fetch("/api/monitor", {
@@ -167,7 +177,12 @@ export function ServerMonitor() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "check_now" }),
     })).then(() => setTimeout(refresh, 2000));
-  }, [isUnlocked, active?.id, positions]);
+  }, [isUnlocked, active?.id, poolKey]);
+
+  // Reset sync marker when wallet changes or locks so next unlock re-syncs.
+  useEffect(() => {
+    lastSyncedPoolKey.current = null;
+  }, [isUnlocked, active?.id]);
 
   const outOfRange = status?.health.filter(h => !h.inRange).length ?? 0;
   const nearEdge = status?.health.filter(h => h.inRange && h.edgeProximityPct < 10).length ?? 0;

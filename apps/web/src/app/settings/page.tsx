@@ -23,7 +23,6 @@ const STRATEGY_OPTIONS = [
 ];
 
 const INTERVAL_OPTIONS = [
-  { label: "30s", value: 30 },
   { label: "1m", value: 60 },
   { label: "5m", value: 300 },
   { label: "15m", value: 900 },
