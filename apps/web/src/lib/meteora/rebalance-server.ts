@@ -47,6 +47,11 @@ export async function executeRebalanceWithKeypair(params: {
   const position = userPositions.find(p => p.publicKey.toBase58() === params.positionKey);
   if (!position) throw new Error("Position not found");
 
+  // Skip empty positions — SDK throws "Assertion failed" when there are no liquidity shares
+  const pd = position.positionData as { totalXAmount?: string; totalYAmount?: string };
+  const isEmpty = pd.totalXAmount === "0" && pd.totalYAmount === "0";
+  if (isEmpty) throw new Error("Rebalance skipped: position has no liquidity");
+
   let rebalanceResponse: unknown;
   try {
     rebalanceResponse = await (pool as unknown as {
@@ -77,6 +82,10 @@ export async function executeRebalanceWithKeypair(params: {
         throw new Error(`Rebalance skipped: wallet lacks tokens for deposit (${xSym}… / ${ySym}…). Position is likely single-sided — wallet needs both tokens to rebalance into a balanced range.`);
       }
       throw new Error(`Simulation failed. Logs:\n${logs?.join("\n") ?? e.message}`);
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.toLowerCase().includes("assertion failed")) {
+      throw new Error(`Rebalance skipped: SDK assertion failed — position may be empty or in an invalid state (${msg})`);
     }
     throw e;
   }
