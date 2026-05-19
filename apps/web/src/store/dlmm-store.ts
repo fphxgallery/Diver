@@ -33,6 +33,7 @@ interface DlmmState {
   positionsLoading: Record<string, boolean>;
   positionsLoaded: Record<string, boolean>;
   positionsLastFetchedAt: Record<string, number>;
+  lpAgentPositions: Record<string, import("@/lib/meteora/lpagent").LpAgentPosition[]>;
 
   loadPairs: () => Promise<void>;
   reloadPairs: () => Promise<void>;
@@ -40,6 +41,7 @@ interface DlmmState {
   loadPositions: (walletPubkey: string, poolAddresses: string[], pairNames: Record<string, string>) => Promise<void>;
   discoverAndLoadPositions: (walletPubkey: string, apiKey: string) => Promise<void>;
   getPositions: (walletPubkey: string) => UserPositionWithMeta[];
+  getLpAgentPositions: (walletPubkey: string) => import("@/lib/meteora/lpagent").LpAgentPosition[];
   invalidatePositions: (walletPubkey: string) => void;
 }
 
@@ -52,6 +54,7 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
   positionsLoading: {},
   positionsLoaded: {},
   positionsLastFetchedAt: {},
+  lpAgentPositions: {},
 
   loadPairs: async () => {
     if (get().pairsLoaded || get().pairsLoading) return;
@@ -86,8 +89,10 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
 
     try {
       const allPositions: UserPositionWithMeta[] = [];
-      await Promise.allSettled(
-        poolAddresses.map(async (poolAddr) => {
+      for (let i = 0; i < poolAddresses.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 300));
+        const poolAddr = poolAddresses[i];
+        try {
           const { userPositions, activeBinId, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, walletPubkey);
           const name = pairNames[poolAddr] ?? poolAddr.slice(0, 8);
           const [tokenXSymbol, tokenYSymbol] = parseSymbols(name);
@@ -103,8 +108,10 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
               tokenYSymbol,
             });
           });
-        })
-      );
+        } catch {
+          // skip failed pools — don't abort the whole load
+        }
+      }
       set(s => ({ positions: { ...s.positions, [walletPubkey]: allPositions } }));
     } finally {
       set(s => ({ positionsLoading: { ...s.positionsLoading, [walletPubkey]: false } }));
@@ -115,7 +122,6 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
     const lastFetch = get().positionsLastFetchedAt[walletPubkey] ?? 0;
     if (Date.now() - lastFetch < 60_000) return;
 
-    // Return existing in-flight promise if one is already running
     const existing = discoveryInFlight.get(walletPubkey);
     if (existing) return existing;
 
@@ -123,6 +129,8 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
       set(s => ({ positionsLastFetchedAt: { ...s.positionsLastFetchedAt, [walletPubkey]: Date.now() } }));
       try {
         const lpPositions = await getOpeningPositions(walletPubkey, apiKey);
+        // Store LP Agent data so dashboard can read currentValue/yield24h without a second call
+        set(s => ({ lpAgentPositions: { ...s.lpAgentPositions, [walletPubkey]: lpPositions } }));
         const poolAddresses = [...new Set(lpPositions.map(p => p.pool))];
         const pairNames = Object.fromEntries(lpPositions.map(p => [p.pool, p.pairName]));
         await get().loadPositions(walletPubkey, poolAddresses, pairNames);
@@ -137,16 +145,19 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
   },
 
   getPositions: (walletPubkey) => get().positions[walletPubkey] ?? [],
+  getLpAgentPositions: (walletPubkey) => get().lpAgentPositions[walletPubkey] ?? [],
 
   invalidatePositions: (walletPubkey) => {
     set(s => {
       const positions = { ...s.positions };
       const positionsLoaded = { ...s.positionsLoaded };
       const positionsLastFetchedAt = { ...s.positionsLastFetchedAt };
+      const lpAgentPositions = { ...s.lpAgentPositions };
       delete positions[walletPubkey];
       delete positionsLoaded[walletPubkey];
       delete positionsLastFetchedAt[walletPubkey];
-      return { positions, positionsLoaded, positionsLastFetchedAt };
+      delete lpAgentPositions[walletPubkey];
+      return { positions, positionsLoaded, positionsLastFetchedAt, lpAgentPositions };
     });
   },
 }));

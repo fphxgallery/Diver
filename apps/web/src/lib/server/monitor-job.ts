@@ -64,8 +64,10 @@ async function runCheck() {
     for (const entry of entries) {
       if (entry.poolAddresses.length === 0) continue;
 
-      await Promise.allSettled(
-        entry.poolAddresses.map(async (poolAddr) => {
+      for (let pi = 0; pi < entry.poolAddresses.length; pi++) {
+        if (pi > 0) await new Promise(r => setTimeout(r, 500));
+        const poolAddr = entry.poolAddresses[pi];
+        await (async () => {
           try {
             const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, entry.publicKey, "mainnet-beta", entry.rpcUrl);
             addLog("info", "monitor.pool.check", `${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} — ${userPositions.length} position(s)`, { pool: poolAddr, positions: userPositions.length });
@@ -141,8 +143,8 @@ async function runCheck() {
             console.error(`[diver] runCheck failed for pool ${poolAddr}:`, msg);
             addLog("error", "monitor.pool.error", `Pool check failed — ${poolAddr.slice(0, 8)}: ${msg}`, { pool: poolAddr });
           }
-        })
-      );
+        })();
+      }
     }
 
     state.health = newHealth;

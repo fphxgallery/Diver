@@ -7,7 +7,7 @@ import { useWalletStore } from "@/store/wallet-store";
 import { useQuery } from "@tanstack/react-query";
 import { getSolBalance } from "@/lib/solana/balance";
 import { getTopAprPairs, formatFeeRatio, formatLiquidity } from "@/lib/meteora/pools";
-import { getOpeningPositions, getTokenBalances, getRevenueForPeriod } from "@/lib/meteora/lpagent";
+import { getTokenBalances, getRevenueForPeriod } from "@/lib/meteora/lpagent";
 import { useMonitorStore } from "@/store/monitor-store";
 import { useDlmmStore } from "@/store/dlmm-store";
 import { Layers, Wallet, TrendingUp, DollarSign } from "lucide-react";
@@ -81,7 +81,7 @@ export default function DashboardPage() {
   const { wallets, activeId, hydrated } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
   const { settings, loadSettings } = useMonitorStore();
-  const { discoverAndLoadPositions, getPositions } = useDlmmStore();
+  const { discoverAndLoadPositions, getPositions, getLpAgentPositions, positionsLoaded, positionsLoading } = useDlmmStore();
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
@@ -95,20 +95,16 @@ export default function DashboardPage() {
   const hasApiKey = !!active && !!settings.lpAgentApiKey;
   const [feesPeriod, setFeesPeriod] = useState<FeesPeriod>("7D");
 
-  const { data: lpPositions, isPending: lpPending } = useQuery({
-    queryKey: ["lp-positions-financial", active?.publicKey, settings.lpAgentApiKey],
-    queryFn: () => getOpeningPositions(active!.publicKey, settings.lpAgentApiKey),
-    enabled: hasApiKey,
-    staleTime: 60_000,
-    refetchInterval: 120_000,
-  });
+  // LP Agent positions come from discoverAndLoadPositions — no separate query needed
+  const lpPositions = active ? getLpAgentPositions(active.publicKey) : [];
+  const lpLoaded = active ? positionsLoaded[active.publicKey] ?? false : false;
+  const lpPending = hasApiKey && !lpLoaded && (active ? (positionsLoading[active.publicKey] ?? true) : false);
 
   const { data: tokenBalances } = useQuery({
     queryKey: ["token-balances", active?.publicKey, settings.lpAgentApiKey],
     queryFn: () => getTokenBalances(active!.publicKey, settings.lpAgentApiKey),
     enabled: hasApiKey,
-    staleTime: 60_000,
-    refetchInterval: 120_000,
+    staleTime: 5 * 60_000,
   });
 
   const { data: fees7d, isPending: fees7dPending } = useQuery({
