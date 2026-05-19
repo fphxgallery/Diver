@@ -33,6 +33,7 @@ export async function executeRebalanceWithKeypair(params: {
   positionKey: string;
   keypair: Keypair;
   settings?: Partial<RebalanceSettings>;
+  topUpEnabled?: boolean;
   cluster?: Cluster;
   rpcUrl?: string;
 }): Promise<string[]> {
@@ -51,6 +52,70 @@ export async function executeRebalanceWithKeypair(params: {
   const pd = position.positionData as { totalXAmount?: string; totalYAmount?: string };
   const isEmpty = pd.totalXAmount === "0" && pd.totalYAmount === "0";
   if (isEmpty) throw new Error("Rebalance skipped: position has no liquidity");
+
+  // Create missing ATAs first — simulation (both simulate and rebalancePosition) fails if ATAs don't exist
+  const { tokenXProgram, tokenYProgram } = getTokenProgramId(pool.lbPair);
+  const [ataX, ataY] = await Promise.all([
+    getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
+    getOrCreateATAInstruction(connection, pool.tokenY.mint.address, params.keypair.publicKey, tokenYProgram, params.keypair.publicKey),
+  ]);
+  const ataInstructions = [ataX.ix, ataY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
+
+  if (ataInstructions.length > 0) {
+    const { blockhash: ataBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const ataTx = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: params.keypair.publicKey,
+        recentBlockhash: ataBlockhash,
+        instructions: ataInstructions,
+      }).compileToV0Message()
+    );
+    ataTx.sign([params.keypair]);
+    const ataSig = await connection.sendRawTransaction(ataTx.serialize(), { skipPreflight: false, maxRetries: 3 });
+    await connection.confirmTransaction({ signature: ataSig, blockhash: ataBlockhash, lastValidBlockHeight }, "confirmed");
+  }
+
+  // Dynamic 50/50 top-up: compute how much of the deficit token to add from wallet
+  if (params.topUpEnabled) {
+    try {
+      const decimalsX = pool.tokenX.mint.decimals;
+      const decimalsY = pool.tokenY.mint.decimals;
+      const activeBin = await pool.getActiveBin();
+      const priceXperY = parseFloat(activeBin.pricePerToken);
+
+      const posX = new BN(pd.totalXAmount ?? "0").isZero() ? 0 : parseInt(pd.totalXAmount!) / 10 ** decimalsX;
+      const posY = new BN(pd.totalYAmount ?? "0").isZero() ? 0 : parseInt(pd.totalYAmount!) / 10 ** decimalsY;
+      const xValueInY = posX * priceXperY;
+      const yValueInY = posY;
+
+      const [xBal, yBal] = await Promise.all([
+        connection.getTokenAccountBalance(ataX.ataPubKey).catch(() => null),
+        connection.getTokenAccountBalance(ataY.ataPubKey).catch(() => null),
+      ]);
+      const walletXRaw = parseInt(xBal?.value.amount ?? "0");
+      const walletYRaw = parseInt(yBal?.value.amount ?? "0");
+
+      if (xValueInY < yValueInY && walletXRaw > 0) {
+        const deficitInY = yValueInY - xValueInY;
+        const xNeededRaw = Math.floor((deficitInY / priceXperY) * 10 ** decimalsX);
+        const xTopUp = Math.min(xNeededRaw, walletXRaw);
+        if (xTopUp > 0) {
+          s.topUpX = new BN(xTopUp);
+          console.log(`[diver] topUp50_50: adding ${xTopUp} raw X (${(xTopUp / 10 ** decimalsX).toFixed(6)}) to close $${deficitInY.toFixed(4)} Y deficit`);
+        }
+      } else if (yValueInY < xValueInY && walletYRaw > 0) {
+        const deficitInY = xValueInY - yValueInY;
+        const yTopUpRaw = Math.floor(deficitInY * 10 ** decimalsY);
+        const yTopUp = Math.min(yTopUpRaw, walletYRaw);
+        if (yTopUp > 0) {
+          s.topUpY = new BN(yTopUp);
+          console.log(`[diver] topUp50_50: adding ${yTopUp} raw Y (${(yTopUp / 10 ** decimalsY).toFixed(6)}) to close $${deficitInY.toFixed(4)} Y deficit`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[diver] topUp50_50 calculation failed, proceeding without top-up:`, e instanceof Error ? e.message : e);
+    }
+  }
 
   let rebalanceResponse: unknown;
   try {
@@ -90,28 +155,6 @@ export async function executeRebalanceWithKeypair(params: {
       throw new Error(`Rebalance skipped: SDK assertion failed — position may be empty or in an invalid state (${msg})`);
     }
     throw e;
-  }
-
-  // Create missing ATAs before rebalancePosition — it simulates on-chain and will fail if ATAs don't exist
-  const { tokenXProgram, tokenYProgram } = getTokenProgramId(pool.lbPair);
-  const [ataX, ataY] = await Promise.all([
-    getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
-    getOrCreateATAInstruction(connection, pool.tokenY.mint.address, params.keypair.publicKey, tokenYProgram, params.keypair.publicKey),
-  ]);
-  const ataInstructions = [ataX.ix, ataY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
-
-  if (ataInstructions.length > 0) {
-    const { blockhash: ataBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    const ataTx = new VersionedTransaction(
-      new TransactionMessage({
-        payerKey: params.keypair.publicKey,
-        recentBlockhash: ataBlockhash,
-        instructions: ataInstructions,
-      }).compileToV0Message()
-    );
-    ataTx.sign([params.keypair]);
-    const ataSig = await connection.sendRawTransaction(ataTx.serialize(), { skipPreflight: false, maxRetries: 3 });
-    await connection.confirmTransaction({ signature: ataSig, blockhash: ataBlockhash, lastValidBlockHeight }, "confirmed");
   }
 
   const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {

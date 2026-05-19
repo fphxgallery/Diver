@@ -383,6 +383,7 @@ export function ServerMonitor() {
                     { label: "OOR trigger", ok: s.triggerOnOutOfRange },
                     { label: `Edge ${s.edgeProximityThresholdPct}%`, ok: s.edgeProximityThresholdPct > 0 },
                     { label: "Composition", ok: s.compositionCheckEnabled },
+                    { label: "Top-up 50/50", ok: s.topUpEnabled },
                   ];
                   return (
                     <div key={sw.walletId} className="flex flex-wrap gap-1.5 text-xs">

@@ -236,7 +236,7 @@ export default function SettingsPage() {
           <div>
             <Label className="mb-2 block">Default Bin Width</Label>
             <div className="flex gap-2">
-              {[10, 20, 40, 69].map(n => (
+              {[2, 5, 10, 20, 40, 69].map(n => (
                 <button key={n} onClick={() => saveSetting("defaultNumBins", n)}
                   className={cn("flex-1 py-1.5 rounded-lg text-sm transition-colors",
                     settings.defaultNumBins === n ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"
@@ -311,6 +311,25 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">Default 40–60%. Single-sided positions (≈0% or ≈100%) will be skipped.</p>
             </div>
           )}
+
+          <Separator />
+
+          {/* 50/50 top-up */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Auto Top-Up (50/50)</div>
+              <div className="text-xs text-muted-foreground">On each rebalance, add the deficit token from your wallet to equalize X and Y USD value. Wallet must hold reserves of both tokens.</div>
+            </div>
+            <button
+              onClick={() => saveSetting("topUpEnabled", !settings.topUpEnabled)}
+              className={cn("w-10 h-6 rounded-full transition-colors relative shrink-0 ml-4",
+                settings.topUpEnabled ? "bg-primary" : "bg-secondary border border-border"
+              )}>
+              <span className={cn("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm",
+                settings.topUpEnabled && "translate-x-4"
+              )} />
+            </button>
+          </div>
 
           <div className="text-xs text-muted-foreground bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
             ⚠ Auto-rebalance runs server-side using the keypair unlocked in Server Monitor. Unlock your wallet there to enable automatic rebalancing.

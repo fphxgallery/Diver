@@ -55,6 +55,8 @@ export interface MonitorSettings {
   compositionCheckEnabled: boolean;
   minXRatioPct: number;
   maxXRatioPct: number;
+  /** Auto top-up to maintain 50/50 USD balance between X and Y on each rebalance */
+  topUpEnabled: boolean;
   /** LP Agent API key for position discovery */
   lpAgentApiKey: string;
   /** Jupiter API key for swaps */
@@ -73,6 +75,7 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   compositionCheckEnabled: false,
   minXRatioPct: 40,
   maxXRatioPct: 60,
+  topUpEnabled: false,
   lpAgentApiKey: "",
   jupiterApiKey: "",
 };
