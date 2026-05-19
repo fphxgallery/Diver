@@ -73,7 +73,8 @@ export default function LogsPage() {
     return () => clearInterval(t);
   }, [autoRefresh, fetchLogs]);
 
-  const visible = filter === "all" ? entries : entries.filter(e => e.level === filter);
+  const filtered = filter === "all" ? entries : entries.filter(e => e.level === filter);
+  const visible = filtered.slice(0, 60);
 
   const counts = {
     info: entries.filter(e => e.level === "info").length,
@@ -82,7 +83,7 @@ export default function LogsPage() {
   };
 
   return (
-    <div className="flex-1 pt-32 px-6 pb-6 space-y-4">
+    <div className="flex-1 pt-32 px-8 pb-6 space-y-4 max-w-6xl mx-auto w-full">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <ScrollText className="w-5 h-5 text-muted-foreground" />
@@ -128,7 +129,9 @@ export default function LogsPage() {
             )}
           </button>
         ))}
-        <span className="ml-auto text-xs text-muted-foreground">{visible.length} entries</span>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {visible.length} of {filtered.length} entries
+        </span>
       </div>
 
       <Card className="border-border overflow-hidden">

@@ -102,6 +102,10 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.1.4
+- **Server Logs layout.** Added horizontal padding and `max-w-6xl mx-auto` so the log table no longer slams the viewport edges on wide screens.
+- **Log entry cap.** Server Logs page displays the 60 most recent entries per active filter. Count label shows "X of Y entries" so you can see how many are hidden.
+
 ### v1.1.3
 - **Server monitor visibility fix.** Pinned log buffer, key store, and monitor state to `globalThis`. Next.js 16 turbopack standalone can duplicate server-only modules across the instrumentation runtime and route handlers; `addLog()` was writing to one buffer while `/api/logs` read from another, so Server Logs showed 0 entries even when the monitor was running.
 - **Stop check_now spam.** `ServerMonitor` sync effect now gates on a stable `poolKey` (sorted joined pool addresses) with a `useRef` last-synced marker, instead of depending on the `positions` object identity that flipped on every browser poll.
