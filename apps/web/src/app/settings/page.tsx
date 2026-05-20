@@ -9,7 +9,16 @@ import { Separator } from "@/components/ui/separator";
 import { useMonitorStore } from "@/store/monitor-store";
 import { StrategyType } from "@meteora-ag/dlmm";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Server, RefreshCw, Zap, Filter, Key } from "lucide-react";
+import { CheckCircle2, Server, RefreshCw, Zap, Filter, Key, X } from "lucide-react";
+import { searchTokens, type JupiterToken } from "@/lib/jupiter/api";
+import type { BasketToken } from "@/lib/meteora/monitor";
+
+function evenWeights(tokens: BasketToken[]): BasketToken[] {
+  const n = tokens.length;
+  if (n === 0) return tokens;
+  const w = Math.floor(100 / n);
+  return tokens.map((t, i) => ({ ...t, weightPct: i === n - 1 ? 100 - w * (n - 1) : w }));
+}
 
 const RPC_PRESETS = [
   { label: "Mainnet (public)", value: "https://api.mainnet-beta.solana.com" },
@@ -46,10 +55,31 @@ export default function SettingsPage() {
     return storedRpc ?? process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.mainnet-beta.solana.com";
   });
   const [saved, setSaved] = useState(false);
+  const [basketQuery, setBasketQuery] = useState("");
+  const [basketResults, setBasketResults] = useState<JupiterToken[]>([]);
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  async function runBasketSearch(q: string) {
+    setBasketQuery(q);
+    if (q.trim().length < 1) { setBasketResults([]); return; }
+    const r = await searchTokens(q);
+    setBasketResults(r.slice(0, 6));
+  }
+  function addBasketToken(t: JupiterToken) {
+    if (settings.basket.some(b => b.mint === t.address)) return;
+    saveSetting("basket", evenWeights([...settings.basket, { mint: t.address, symbol: t.symbol, decimals: t.decimals, weightPct: 0 }]));
+    setBasketQuery(""); setBasketResults([]);
+  }
+  function removeBasketToken(mint: string) {
+    saveSetting("basket", evenWeights(settings.basket.filter(b => b.mint !== mint)));
+  }
+  function setBasketWeight(mint: string, w: number) {
+    saveSetting("basket", settings.basket.map(b => b.mint === mint ? { ...b, weightPct: w } : b));
+  }
+  const basketWeightSum = settings.basket.reduce((s, b) => s + b.weightPct, 0);
 
   function persistRpc() {
     if (typeof window !== "undefined") {
@@ -347,6 +377,88 @@ export default function SettingsPage() {
               )} />
             </button>
           </div>
+
+          <Separator />
+
+          {/* Reserve basket swap */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Reserve Basket Swap</div>
+              <div className="text-xs text-muted-foreground">When a rebalance needs a token the wallet lacks, swap from your reserve basket to acquire it. Requires a Jupiter API key.</div>
+            </div>
+            <button
+              onClick={() => saveSetting("basketSwapEnabled", !settings.basketSwapEnabled)}
+              className={cn("w-10 h-6 rounded-full transition-colors relative shrink-0 ml-4",
+                settings.basketSwapEnabled ? "bg-primary" : "bg-secondary border border-border"
+              )}>
+              <span className={cn("absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm",
+                settings.basketSwapEnabled && "translate-x-4"
+              )} />
+            </button>
+          </div>
+
+          {settings.basketSwapEnabled && (
+            <div className="space-y-3 pl-1">
+              <div className="relative">
+                <Input
+                  value={basketQuery}
+                  onChange={e => runBasketSearch(e.target.value)}
+                  placeholder="Search token to add (symbol or mint)"
+                  className="bg-secondary border-border text-sm"
+                />
+                {basketResults.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+                    {basketResults.map(t => (
+                      <button key={t.address} onClick={() => addBasketToken(t)}
+                        className="flex items-center justify-between w-full px-3 py-2 text-sm hover:bg-secondary text-left">
+                        <span className="font-medium">{t.symbol}</span>
+                        <span className="text-xs text-muted-foreground">{t.address.slice(0, 4)}…{t.address.slice(-4)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {settings.basket.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No reserve tokens. Add tokens (e.g. SOL, USDC) the bot can swap from to cover deficits.</p>
+              ) : (
+                <div className="space-y-2">
+                  {settings.basket.map(b => (
+                    <div key={b.mint} className="flex items-center gap-2">
+                      <span className="text-sm font-medium w-20 truncate">{b.symbol}</span>
+                      <Input type="number" value={b.weightPct}
+                        onChange={e => setBasketWeight(b.mint, Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                        className="bg-secondary border-border w-20 text-sm" min={0} max={100} />
+                      <span className="text-xs text-muted-foreground">% weight</span>
+                      <button onClick={() => removeBasketToken(b.mint)} className="ml-auto text-muted-foreground hover:text-red-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <p className={cn("text-xs", basketWeightSum === 100 ? "text-muted-foreground" : "text-yellow-400")}>
+                    Total weight: {basketWeightSum}%{basketWeightSum !== 100 ? " (should sum to 100)" : ""}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-4 pt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Max price impact</span>
+                  <Input type="number" value={settings.basketSwapMaxPriceImpactPct}
+                    onChange={e => saveSetting("basketSwapMaxPriceImpactPct", Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="bg-secondary border-border w-20 text-sm" min={0} step={0.1} />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Max swap</span>
+                  <Input type="number" value={settings.basketSwapMaxPctOfPosition}
+                    onChange={e => saveSetting("basketSwapMaxPctOfPosition", Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                    className="bg-secondary border-border w-20 text-sm" min={0} max={100} />
+                  <span className="text-xs text-muted-foreground">% of position</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="text-xs text-muted-foreground bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3">
             ⚠ Auto-rebalance runs server-side using the keypair unlocked in Server Monitor. Unlock your wallet there to enable automatic rebalancing.

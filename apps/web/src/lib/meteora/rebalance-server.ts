@@ -4,7 +4,10 @@ import BN from "bn.js";
 import DLMM, { StrategyType, getOrCreateATAInstruction, getTokenProgramId } from "@meteora-ag/dlmm";
 import { getConnection, type Cluster } from "./web3-compat-boundary";
 import { confirmByPolling } from "@/lib/solana/send";
+import { fetchPrices } from "@/lib/server/portfolio-value";
+import { acquireDeficitToken } from "./basket-swap";
 import type { RebalanceSettings } from "./rebalance";
+import type { BasketToken } from "./monitor";
 
 const DEFAULTS: RebalanceSettings = {
   strategyType: StrategyType.Spot,
@@ -35,6 +38,11 @@ export async function executeRebalanceWithKeypair(params: {
   keypair: Keypair;
   settings?: Partial<RebalanceSettings>;
   topUpEnabled?: boolean;
+  basketSwapEnabled?: boolean;
+  basket?: BasketToken[];
+  basketSwapMaxPriceImpactPct?: number;
+  basketSwapMaxPctOfPosition?: number;
+  jupiterApiKey?: string;
   cluster?: Cluster;
   rpcUrl?: string;
 }): Promise<string[]> {
@@ -78,7 +86,7 @@ export async function executeRebalanceWithKeypair(params: {
 
   // Dynamic 50/50 top-up: add deficit token + withdraw equivalent excess to keep total size stable.
   // If wallet has no deficit token, skip entirely — never withdraw excess without a matching add.
-  if (params.topUpEnabled) {
+  if (params.topUpEnabled || params.basketSwapEnabled) {
     try {
       const decimalsX = pool.tokenX.mint.decimals;
       const decimalsY = pool.tokenY.mint.decimals;
@@ -94,8 +102,47 @@ export async function executeRebalanceWithKeypair(params: {
         connection.getTokenAccountBalance(ataX.ataPubKey).catch(() => null),
         connection.getTokenAccountBalance(ataY.ataPubKey).catch(() => null),
       ]);
-      const walletXRaw = parseInt(xBal?.value.amount ?? "0");
-      const walletYRaw = parseInt(yBal?.value.amount ?? "0");
+      let walletXRaw = parseInt(xBal?.value.amount ?? "0");
+      let walletYRaw = parseInt(yBal?.value.amount ?? "0");
+
+      // Basket swap: if the deficit side's wallet balance can't cover the top-up,
+      // swap from the reserve basket to acquire it, then re-read the balance.
+      if (params.basketSwapEnabled && params.basket && params.basket.length > 0 && xValueInY !== yValueInY) {
+        const xIsShort = xValueInY < yValueInY;
+        const deficitMint = (xIsShort ? pool.tokenX : pool.tokenY).mint.address.toBase58();
+        const deficitDecimals = xIsShort ? decimalsX : decimalsY;
+        const fullDeficitInY = Math.abs(yValueInY - xValueInY);
+        const neededRaw = xIsShort
+          ? Math.floor((fullDeficitInY / priceXperY) * 10 ** decimalsX)
+          : Math.floor(fullDeficitInY * 10 ** decimalsY);
+        const currentRaw = xIsShort ? walletXRaw : walletYRaw;
+        if (neededRaw > currentRaw) {
+          const tokenXMint = pool.tokenX.mint.address.toBase58();
+          const tokenYMint = pool.tokenY.mint.address.toBase58();
+          const prices = await fetchPrices([tokenXMint, tokenYMint]);
+          const positionValueUsd = posX * (prices[tokenXMint] ?? 0) + posY * (prices[tokenYMint] ?? 0);
+          const acquired = await acquireDeficitToken({
+            connection,
+            keypair: params.keypair,
+            owner: params.keypair.publicKey.toBase58(),
+            rpcUrl: params.rpcUrl ?? connection.rpcEndpoint,
+            basket: params.basket,
+            deficitMint,
+            deficitDecimals,
+            shortfallRaw: neededRaw - currentRaw,
+            positionValueUsd,
+            maxPriceImpactPct: params.basketSwapMaxPriceImpactPct ?? 1,
+            maxPctOfPosition: params.basketSwapMaxPctOfPosition ?? 30,
+            apiKey: params.jupiterApiKey ?? "",
+          });
+          if (acquired) {
+            console.log(`[diver] basket swap: ${acquired.source} → deficit out=${acquired.outAmount} sig=${acquired.signature.slice(0, 8)}`);
+            const reread = await connection.getTokenAccountBalance(xIsShort ? ataX.ataPubKey : ataY.ataPubKey).catch(() => null);
+            const newRaw = parseInt(reread?.value.amount ?? "0");
+            if (xIsShort) walletXRaw = newRaw; else walletYRaw = newRaw;
+          }
+        }
+      }
 
       if (xValueInY < yValueInY && walletXRaw > 0) {
         // X is short, Y is excess — add X from wallet, withdraw equivalent Y

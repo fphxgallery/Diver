@@ -102,6 +102,13 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.0
+- **Reserve basket swap on rebalance deficit.** When an auto-rebalance needs a token the wallet lacks (the common out-of-range single-sided case where a balanced rebalance has no token to deposit on one side), the monitor can now swap from a configured reserve basket to acquire the deficit token, then proceed with the top-up and rebalance. New `basketSwapEnabled` setting plus a `basket` of reserve tokens with target weights.
+- **Basket source selection.** The swap pulls from whichever basket token is most over its target weight, so funding a deficit also nudges the basket back toward its target allocation.
+- **Guardrails.** `basketSwapMaxPriceImpactPct` (default 1%) rejects swaps that route through illiquid pools; `basketSwapMaxPctOfPosition` (default 30%) caps a single swap to a fraction of position value. Swaps fail soft — on any error the rebalance proceeds without the swap, and the existing 30-minute skip cooldown still applies.
+- **Server-side Jupiter swap.** New `swapWithKeypair` (Jupiter v2 order → price-impact check → keypair sign → execute) usable by the monitor without a browser wallet. Settings page gains a "Reserve Basket Swap" editor (token search, per-token weights, guardrail inputs); Server Monitor shows a "Basket swap" status badge.
+- _Known limitation:_ uses Jupiter's default SOL wrapping, so a deficit denominated in wrapped SOL won't be picked up after the swap (it unwraps to native SOL). Works as expected when the deficit is an SPL token (e.g. USDC) funded from a SOL reserve.
+
 ### v1.2.1
 - **Always-on portfolio value chart.** The wallet portfolio page now shows a 30-day line chart of total value (wallet tokens + DLMM positions). History is recorded server-side by the monitor job (hourly, per unlocked wallet) so it accrues even with the browser closed, persisted to `${DIVER_DATA_DIR:-./data}/value-history.json`. The client merges server history with local snapshots. New `GET /api/value-history?owner=` endpoint.
 - **Wallet portfolio layout.** Total value moved inline with the Tokens heading; DLMM positions total shown inline with its heading; per-token USD values added. Wallet profile pictures (upload, resized to 128px WebP, stored in localStorage).

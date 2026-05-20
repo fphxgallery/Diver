@@ -386,6 +386,7 @@ export function ServerMonitor() {
                     { label: `Edge ${s.edgeProximityThresholdPct}%`, ok: s.edgeProximityThresholdPct > 0 },
                     { label: "Composition", ok: s.compositionCheckEnabled },
                     { label: "Top-up 50/50", ok: s.topUpEnabled },
+                    { label: `Basket swap${s.basketSwapEnabled ? ` (${s.basket.length})` : ""}`, ok: s.basketSwapEnabled },
                   ];
                   const rpcHost = (() => { try { return sw.rpcUrl ? new URL(sw.rpcUrl).host : ""; } catch { return sw.rpcUrl?.slice(0, 40) ?? ""; } })();
                   const rpcIsPublic = rpcHost.endsWith("solana.com");

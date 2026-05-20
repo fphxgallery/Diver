@@ -36,6 +36,14 @@ export interface RebalanceRecord {
   error?: string;
 }
 
+export interface BasketToken {
+  mint: string;
+  symbol: string;
+  decimals: number;
+  /** Target weight (%) of this token within the reserve basket */
+  weightPct: number;
+}
+
 export interface MonitorSettings {
   enabled: boolean;
   intervalSeconds: number;
@@ -57,6 +65,14 @@ export interface MonitorSettings {
   maxXRatioPct: number;
   /** Auto top-up to maintain 50/50 USD balance between X and Y on each rebalance */
   topUpEnabled: boolean;
+  /** When a rebalance needs a deficit token the wallet lacks, swap from the reserve basket to acquire it */
+  basketSwapEnabled: boolean;
+  /** Reserve basket of tokens (with target weights) used to fund rebalance deficits */
+  basket: BasketToken[];
+  /** Reject a basket swap whose Jupiter price impact exceeds this % */
+  basketSwapMaxPriceImpactPct: number;
+  /** Cap a single basket swap to this % of total position value */
+  basketSwapMaxPctOfPosition: number;
   /** LP Agent API key for position discovery */
   lpAgentApiKey: string;
   /** Jupiter API key for swaps */
@@ -76,6 +92,10 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   minXRatioPct: 40,
   maxXRatioPct: 60,
   topUpEnabled: false,
+  basketSwapEnabled: false,
+  basket: [],
+  basketSwapMaxPriceImpactPct: 1,
+  basketSwapMaxPctOfPosition: 30,
   lpAgentApiKey: "",
   jupiterApiKey: "",
 };

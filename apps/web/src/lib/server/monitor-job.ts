@@ -109,6 +109,11 @@ async function runCheck() {
                   keypair: entry.keypair,
                   rpcUrl: entry.rpcUrl,
                   topUpEnabled: entry.settings.topUpEnabled,
+                  basketSwapEnabled: entry.settings.basketSwapEnabled,
+                  basket: entry.settings.basket,
+                  basketSwapMaxPriceImpactPct: entry.settings.basketSwapMaxPriceImpactPct,
+                  basketSwapMaxPctOfPosition: entry.settings.basketSwapMaxPctOfPosition,
+                  jupiterApiKey: entry.settings.jupiterApiKey,
                   settings: {
                     strategyType: entry.settings.defaultStrategyType,
                     numBins: entry.settings.defaultNumBins,
