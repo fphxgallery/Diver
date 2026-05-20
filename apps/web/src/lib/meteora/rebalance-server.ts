@@ -5,6 +5,7 @@ import DLMM, { StrategyType, getOrCreateATAInstruction, getTokenProgramId } from
 import { getConnection, type Cluster } from "./web3-compat-boundary";
 import { confirmByPolling } from "@/lib/solana/send";
 import { fetchPrices } from "@/lib/server/portfolio-value";
+import { addLog } from "@/lib/server/server-log";
 import { acquireDeficitToken } from "./basket-swap";
 import type { RebalanceSettings } from "./rebalance";
 import type { BasketToken } from "./monitor";
@@ -21,6 +22,11 @@ const DEFAULTS: RebalanceSettings = {
 
 const PRIORITY_FEE_FLOOR = 50_000;    // microLamports per CU
 const PRIORITY_FEE_CEIL = 2_000_000;
+
+// Never top up with 100% of the wallet balance — leave headroom so fees, rounding,
+// or transfer-fee tokens can't make the on-chain deposit exceed the available balance
+// (InsufficientFunds / Custom:1 after the simulate locked in the exact amount).
+const TOPUP_BALANCE_FRACTION = 0.99;
 
 /** Adaptive priority fee from recent network fees, clamped. microLamports/CU. */
 async function getPriorityFeeMicroLamports(connection: Connection): Promise<number> {
@@ -113,134 +119,159 @@ export async function executeRebalanceWithKeypair(params: {
     await signSendConfirm(connection, params.keypair, ataInstructions, priorityFee, 100_000);
   }
 
-  // Dynamic 50/50 top-up: add deficit token + withdraw equivalent excess to keep total size stable.
-  // If wallet has no deficit token, skip entirely — never withdraw excess without a matching add.
-  if (params.topUpEnabled || params.basketSwapEnabled) {
+  const decimalsX = pool.tokenX.mint.decimals;
+  const decimalsY = pool.tokenY.mint.decimals;
+  const activeBin = await pool.getActiveBin();
+  const priceXperY = parseFloat(activeBin.pricePerToken);
+  const posX = new BN(pd.totalXAmount ?? "0").isZero() ? 0 : parseInt(pd.totalXAmount!) / 10 ** decimalsX;
+  const posY = new BN(pd.totalYAmount ?? "0").isZero() ? 0 : parseInt(pd.totalYAmount!) / 10 ** decimalsY;
+  const xValueInY = posX * priceXperY;
+  const yValueInY = posY;
+
+  async function readWalletRaw(): Promise<{ x: number; y: number }> {
+    const [xBal, yBal] = await Promise.all([
+      connection.getTokenAccountBalance(ataX.ataPubKey).catch(() => null),
+      connection.getTokenAccountBalance(ataY.ataPubKey).catch(() => null),
+    ]);
+    return { x: parseInt(xBal?.value.amount ?? "0"), y: parseInt(yBal?.value.amount ?? "0") };
+  }
+
+  // Set topUp/withdraw on `s` from current wallet balances to push the position toward 50/50.
+  function applyTopUpFromWallet(walletXRaw: number, walletYRaw: number) {
+    s.topUpX = new BN(0); s.topUpY = new BN(0); s.xWithdrawBps = 0; s.yWithdrawBps = 0;
+    if (xValueInY < yValueInY && walletXRaw > 0) {
+      const fullDeficitInY = yValueInY - xValueInY;
+      const xNeededRaw = Math.floor((fullDeficitInY / priceXperY) * 10 ** decimalsX);
+      const xTopUp = Math.min(xNeededRaw, Math.floor(walletXRaw * TOPUP_BALANCE_FRACTION));
+      if (xTopUp > 0) {
+        const actualDeficitInY = (xTopUp / 10 ** decimalsX) * priceXperY;
+        s.topUpX = new BN(xTopUp);
+        s.yWithdrawBps = Math.min(10000, Math.floor((actualDeficitInY / yValueInY) * 10000));
+        addLog("info", "rebalance.topup", `Top-up +${(xTopUp / 10 ** decimalsX).toFixed(6)} X, withdraw ${s.yWithdrawBps}bps Y (~${actualDeficitInY.toFixed(4)} Y)`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
+      }
+    } else if (yValueInY < xValueInY && walletYRaw > 0) {
+      const fullDeficitInY = xValueInY - yValueInY;
+      const yNeededRaw = Math.floor(fullDeficitInY * 10 ** decimalsY);
+      const yTopUp = Math.min(yNeededRaw, Math.floor(walletYRaw * TOPUP_BALANCE_FRACTION));
+      if (yTopUp > 0) {
+        const actualDeficitInY = yTopUp / 10 ** decimalsY;
+        s.topUpY = new BN(yTopUp);
+        s.xWithdrawBps = Math.min(10000, Math.floor((actualDeficitInY / xValueInY) * 10000));
+        addLog("info", "rebalance.topup", `Top-up +${(yTopUp / 10 ** decimalsY).toFixed(6)} Y, withdraw ${s.xWithdrawBps}bps X (~${actualDeficitInY.toFixed(4)} Y equiv)`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
+      }
+    }
+  }
+
+  // Swap from the reserve basket to acquire the deficit token. Returns true if a swap landed.
+  async function tryAcquireDeficitFromBasket(walletXRaw: number, walletYRaw: number): Promise<boolean> {
+    if (!params.basketSwapEnabled || !params.basket || params.basket.length === 0 || xValueInY === yValueInY) return false;
+    const xIsShort = xValueInY < yValueInY;
+    const deficitMint = (xIsShort ? pool.tokenX : pool.tokenY).mint.address.toBase58();
+    const deficitDecimals = xIsShort ? decimalsX : decimalsY;
+    const fullDeficitInY = Math.abs(yValueInY - xValueInY);
+    const neededRaw = xIsShort
+      ? Math.floor((fullDeficitInY / priceXperY) * 10 ** decimalsX)
+      : Math.floor(fullDeficitInY * 10 ** decimalsY);
+    const currentRaw = xIsShort ? walletXRaw : walletYRaw;
+    if (neededRaw <= currentRaw) return false;
+    const tokenXMint = pool.tokenX.mint.address.toBase58();
+    const tokenYMint = pool.tokenY.mint.address.toBase58();
+    const prices = await fetchPrices([tokenXMint, tokenYMint]);
+    const positionValueUsd = posX * (prices[tokenXMint] ?? 0) + posY * (prices[tokenYMint] ?? 0);
+    const acquired = await acquireDeficitToken({
+      connection,
+      keypair: params.keypair,
+      owner: params.keypair.publicKey.toBase58(),
+      rpcUrl: params.rpcUrl ?? connection.rpcEndpoint,
+      basket: params.basket,
+      deficitMint,
+      deficitDecimals,
+      shortfallRaw: neededRaw - currentRaw,
+      positionValueUsd,
+      maxPriceImpactPct: params.basketSwapMaxPriceImpactPct ?? 1,
+      maxPctOfPosition: params.basketSwapMaxPctOfPosition ?? 30,
+      apiKey: params.jupiterApiKey ?? "",
+    });
+    if (!acquired) return false;
+    addLog("info", "rebalance.swap", `Basket swap ${acquired.source} → deficit (out=${acquired.outAmount}, sig=${acquired.signature.slice(0, 8)})`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8), source: acquired.source, out: acquired.outAmount });
+    return true;
+  }
+
+  const dlmm = pool as unknown as {
+    simulateRebalancePositionWithBalancedStrategy: (
+      positionAddress: PublicKey, positionData: unknown, strategy: StrategyType,
+      topUpX: BN, topUpY: BN, xWithdrawBps: BN, yWithdrawBps: BN
+    ) => Promise<unknown>;
+  };
+  const runSimulate = () => dlmm.simulateRebalancePositionWithBalancedStrategy(
+    position.publicKey, position.positionData, s.strategyType, s.topUpX, s.topUpY, new BN(s.xWithdrawBps), new BN(s.yWithdrawBps)
+  );
+
+  // Proactive 50/50 top-up from EXISTING wallet balance (no swap).
+  if (params.topUpEnabled) {
     try {
-      const decimalsX = pool.tokenX.mint.decimals;
-      const decimalsY = pool.tokenY.mint.decimals;
-      const activeBin = await pool.getActiveBin();
-      const priceXperY = parseFloat(activeBin.pricePerToken);
-
-      const posX = new BN(pd.totalXAmount ?? "0").isZero() ? 0 : parseInt(pd.totalXAmount!) / 10 ** decimalsX;
-      const posY = new BN(pd.totalYAmount ?? "0").isZero() ? 0 : parseInt(pd.totalYAmount!) / 10 ** decimalsY;
-      const xValueInY = posX * priceXperY;
-      const yValueInY = posY;
-
-      const [xBal, yBal] = await Promise.all([
-        connection.getTokenAccountBalance(ataX.ataPubKey).catch(() => null),
-        connection.getTokenAccountBalance(ataY.ataPubKey).catch(() => null),
-      ]);
-      let walletXRaw = parseInt(xBal?.value.amount ?? "0");
-      let walletYRaw = parseInt(yBal?.value.amount ?? "0");
-
-      // Basket swap: if the deficit side's wallet balance can't cover the top-up,
-      // swap from the reserve basket to acquire it, then re-read the balance.
-      if (params.basketSwapEnabled && params.basket && params.basket.length > 0 && xValueInY !== yValueInY) {
-        const xIsShort = xValueInY < yValueInY;
-        const deficitMint = (xIsShort ? pool.tokenX : pool.tokenY).mint.address.toBase58();
-        const deficitDecimals = xIsShort ? decimalsX : decimalsY;
-        const fullDeficitInY = Math.abs(yValueInY - xValueInY);
-        const neededRaw = xIsShort
-          ? Math.floor((fullDeficitInY / priceXperY) * 10 ** decimalsX)
-          : Math.floor(fullDeficitInY * 10 ** decimalsY);
-        const currentRaw = xIsShort ? walletXRaw : walletYRaw;
-        if (neededRaw > currentRaw) {
-          const tokenXMint = pool.tokenX.mint.address.toBase58();
-          const tokenYMint = pool.tokenY.mint.address.toBase58();
-          const prices = await fetchPrices([tokenXMint, tokenYMint]);
-          const positionValueUsd = posX * (prices[tokenXMint] ?? 0) + posY * (prices[tokenYMint] ?? 0);
-          const acquired = await acquireDeficitToken({
-            connection,
-            keypair: params.keypair,
-            owner: params.keypair.publicKey.toBase58(),
-            rpcUrl: params.rpcUrl ?? connection.rpcEndpoint,
-            basket: params.basket,
-            deficitMint,
-            deficitDecimals,
-            shortfallRaw: neededRaw - currentRaw,
-            positionValueUsd,
-            maxPriceImpactPct: params.basketSwapMaxPriceImpactPct ?? 1,
-            maxPctOfPosition: params.basketSwapMaxPctOfPosition ?? 30,
-            apiKey: params.jupiterApiKey ?? "",
-          });
-          if (acquired) {
-            console.log(`[diver] basket swap: ${acquired.source} → deficit out=${acquired.outAmount} sig=${acquired.signature.slice(0, 8)}`);
-            const reread = await connection.getTokenAccountBalance(xIsShort ? ataX.ataPubKey : ataY.ataPubKey).catch(() => null);
-            const newRaw = parseInt(reread?.value.amount ?? "0");
-            if (xIsShort) walletXRaw = newRaw; else walletYRaw = newRaw;
-          }
-        }
-      }
-
-      if (xValueInY < yValueInY && walletXRaw > 0) {
-        // X is short, Y is excess — add X from wallet, withdraw equivalent Y
-        const fullDeficitInY = yValueInY - xValueInY;
-        const xNeededRaw = Math.floor((fullDeficitInY / priceXperY) * 10 ** decimalsX);
-        const xTopUp = Math.min(xNeededRaw, walletXRaw);
-        if (xTopUp > 0) {
-          const actualDeficitInY = (xTopUp / 10 ** decimalsX) * priceXperY;
-          const yWithdrawBps = Math.min(10000, Math.floor((actualDeficitInY / yValueInY) * 10000));
-          s.topUpX = new BN(xTopUp);
-          s.yWithdrawBps = yWithdrawBps;
-          console.log(`[diver] topUp50_50: +${(xTopUp / 10 ** decimalsX).toFixed(6)} X, withdraw ${yWithdrawBps}bps Y (~${actualDeficitInY.toFixed(4)} Y)`);
-        }
-      } else if (yValueInY < xValueInY && walletYRaw > 0) {
-        // Y is short, X is excess — add Y from wallet, withdraw equivalent X
-        const fullDeficitInY = xValueInY - yValueInY;
-        const yNeededRaw = Math.floor(fullDeficitInY * 10 ** decimalsY);
-        const yTopUp = Math.min(yNeededRaw, walletYRaw);
-        if (yTopUp > 0) {
-          const actualDeficitInY = yTopUp / 10 ** decimalsY;
-          const xWithdrawBps = Math.min(10000, Math.floor((actualDeficitInY / xValueInY) * 10000));
-          s.topUpY = new BN(yTopUp);
-          s.xWithdrawBps = xWithdrawBps;
-          console.log(`[diver] topUp50_50: +${(yTopUp / 10 ** decimalsY).toFixed(6)} Y, withdraw ${xWithdrawBps}bps X (~${actualDeficitInY.toFixed(4)} Y equiv)`);
-        }
-      }
+      const w = await readWalletRaw();
+      applyTopUpFromWallet(w.x, w.y);
     } catch (e) {
-      console.warn(`[diver] topUp50_50 calculation failed, proceeding without top-up:`, e instanceof Error ? e.message : e);
+      addLog("warn", "rebalance.topup.error", `Top-up calc failed, proceeding without: ${e instanceof Error ? e.message : String(e)}`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
     }
   }
 
   let rebalanceResponse: unknown;
   try {
-    rebalanceResponse = await (pool as unknown as {
-      simulateRebalancePositionWithBalancedStrategy: (
-        positionAddress: PublicKey,
-        positionData: unknown,
-        strategy: StrategyType,
-        topUpX: BN,
-        topUpY: BN,
-        xWithdrawBps: BN,
-        yWithdrawBps: BN
-      ) => Promise<unknown>;
-    }).simulateRebalancePositionWithBalancedStrategy(
-      position.publicKey,
-      position.positionData,
-      s.strategyType,
-      s.topUpX,
-      s.topUpY,
-      new BN(s.xWithdrawBps),
-      new BN(s.yWithdrawBps)
-    );
+    rebalanceResponse = await runSimulate();
   } catch (e) {
-    if (e instanceof SendTransactionError) {
-      const logs = e.logs ?? await e.getLogs(connection).catch(() => undefined);
-      if (logs?.some(l => l.includes("insufficient funds"))) {
-        const xSym = pool.tokenX.mint.address.toBase58().slice(0, 8);
-        const ySym = pool.tokenY.mint.address.toBase58().slice(0, 8);
-        throw new Error(`Rebalance skipped: wallet lacks tokens for deposit (${xSym}… / ${ySym}…). Position is likely single-sided — wallet needs both tokens to rebalance into a balanced range.`);
+    // Reactive basket swap: only when the rebalance can't fund itself. Swap from the
+    // basket to acquire the deficit token, re-derive the top-up, and retry once.
+    const logs = e instanceof SendTransactionError ? (e.logs ?? await e.getLogs(connection).catch(() => undefined)) : undefined;
+    const insufficient = !!logs?.some(l => l.includes("insufficient funds"));
+    let recovered = false;
+    if (insufficient && params.basketSwapEnabled && params.basket && params.basket.length > 0) {
+      try {
+        const w = await readWalletRaw();
+        if (await tryAcquireDeficitFromBasket(w.x, w.y)) {
+          const w2 = await readWalletRaw();
+          applyTopUpFromWallet(w2.x, w2.y);
+          rebalanceResponse = await runSimulate();
+          recovered = true;
+        }
+      } catch (retryErr) {
+        addLog("warn", "rebalance.swap.retry", `Basket-swap retry failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
       }
-      throw new Error(`Simulation failed. Logs:\n${logs?.join("\n") ?? e.message}`);
     }
-    const msg = e instanceof Error ? e.message : String(e);
-    const stack = e instanceof Error ? (e.stack ?? "") : "";
-    console.error(`[diver] simulateRebalance assertion — pool=${params.poolAddress} pos=${params.positionKey}\nmsg: ${msg}\nstack: ${stack}`);
-    if (msg.toLowerCase().includes("assertion failed")) {
-      throw new Error(`Rebalance skipped: SDK assertion failed — position may be empty or in an invalid state (${msg})`);
+    if (!recovered) {
+      if (e instanceof SendTransactionError) {
+        if (insufficient) {
+          const xSym = pool.tokenX.mint.address.toBase58().slice(0, 8);
+          const ySym = pool.tokenY.mint.address.toBase58().slice(0, 8);
+          throw new Error(`Rebalance skipped: wallet lacks tokens for deposit (${xSym}… / ${ySym}…)${params.basketSwapEnabled ? " and the reserve basket couldn't cover it" : ""}.`);
+        }
+        throw new Error(`Simulation failed. Logs:\n${logs?.join("\n") ?? e.message}`);
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? (e.stack ?? "") : "";
+      console.error(`[diver] simulateRebalance assertion — pool=${params.poolAddress} pos=${params.positionKey}\nmsg: ${msg}\nstack: ${stack}`);
+      if (msg.toLowerCase().includes("assertion failed")) {
+        throw new Error(`Rebalance skipped: SDK assertion failed — position may be empty or in an invalid state (${msg})`);
+      }
+      throw e;
     }
-    throw e;
+  }
+
+  // Re-ensure both ATAs exist right before building the rebalance. A basket swap can
+  // unwrap+close the wSOL ATA (Jupiter default wrapAndUnwrapSol), and rebalancePosition()
+  // runs an internal CU simulation that fails with AccountNotInitialized (3012) if the
+  // user token account is missing. Idempotent — no-op when the ATAs already exist.
+  {
+    const [reAtaX, reAtaY] = await Promise.all([
+      getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
+      getOrCreateATAInstruction(connection, pool.tokenY.mint.address, params.keypair.publicKey, tokenYProgram, params.keypair.publicKey),
+    ]);
+    const reAtaIxs = [reAtaX.ix, reAtaY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
+    if (reAtaIxs.length > 0) {
+      addLog("info", "rebalance.ata", `Re-creating ${reAtaIxs.length} ATA(s) before rebalance build`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
+      await signSendConfirm(connection, params.keypair, reAtaIxs, priorityFee, 100_000);
+    }
   }
 
   const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {

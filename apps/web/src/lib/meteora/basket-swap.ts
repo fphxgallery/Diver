@@ -1,5 +1,6 @@
 import type { Connection, Keypair } from "@solana/web3.js";
 import { getWalletHoldings, fetchPrices } from "@/lib/server/portfolio-value";
+import { addLog } from "@/lib/server/server-log";
 import { swapWithKeypair } from "@/lib/jupiter/swap-server";
 import type { BasketToken } from "./monitor";
 
@@ -87,7 +88,7 @@ export async function acquireDeficitToken(params: {
     });
     return { signature: res.signature, source: source.symbol, outAmount: res.outAmount };
   } catch (e) {
-    console.warn(`[diver] basket swap failed (${source.symbol} → deficit), proceeding without:`, e instanceof Error ? e.message : e);
+    addLog("warn", "rebalance.swap.fail", `Basket swap ${source.symbol} → deficit failed, proceeding without: ${e instanceof Error ? e.message : String(e)}`, { source: source.symbol, deficit: params.deficitMint.slice(0, 8) });
     return null;
   }
 }

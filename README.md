@@ -102,6 +102,12 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.2
+- **Basket swap is now reactive.** Previously the reserve-basket swap ran proactively on every rebalance trigger (including edge-proximity), causing excessive swapping. It now only fires when a rebalance actually fails for insufficient funds: the monitor tries the rebalance using existing wallet tokens, and only on an insufficient-funds failure does it swap from the basket to acquire the deficit token and retry once.
+- **Basket swap / top-up in server logs.** Swaps, top-ups, and their failures now appear in the Server Logs (`rebalance.swap`, `rebalance.topup`, `rebalance.swap.fail`, `rebalance.swap.retry`, `rebalance.ata`) alongside `rebalance.trigger`, instead of only stdout.
+- **Top-up no longer deposits 100% of balance.** Wallet-funded top-ups cap at 99% of the balance, leaving headroom so fees/rounding/transfer-fees can't make the on-chain deposit exceed the available balance (`InsufficientFunds` / `Custom:1`). Insufficient-funds rebalance failures are now treated as a 30-minute skip instead of retrying every tick.
+- **ATA re-check before rebalance build.** Re-ensures the wallet token accounts exist immediately before building the rebalance, fixing `AccountNotInitialized` (3012) when a swap (wSOL unwrap) or other operation closed an ATA after the initial creation.
+
 ### v1.3.1
 - **Swap routing → Ultra mode.** `/swap/v2/order` only runs in "ultra" mode (all routers compete — Metis, JupiterZ RFQ, Dflow, OKX) when called with no optional params. We were sending `slippageBps` on every request, which demoted to "manual" mode and disabled the RFQ routers, producing far worse routes. `slippageBps` is now optional; the swap page defaults to "Auto" (Ultra) and only sends a value when you pick a manual slippage. Quote card shows the winning route (e.g. "Ultra · jupiterz").
 - **Honest price impact.** Jupiter's `priceImpact` response field is unreliable — it reported 5–15% on swaps that actually filled within ~0.2% of market mid. The swap page now computes real impact as value received vs Jupiter price-v3 mid ("Price impact (vs market)"), falling back to the raw field only when a token price is unavailable. The basket auto-swap guard switched from the bogus `priceImpact` field to a market-derived minimum-output floor.

@@ -124,10 +124,16 @@ async function runCheck() {
                 addLog("info", "rebalance.success", `Rebalance succeeded — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${txSigs.length} tx)`, { txs: txSigs.length, pool: poolAddr });
               } catch (e) {
                 error = e instanceof Error ? e.message : "Rebalance failed";
-                const isSkip = error.toLowerCase().includes("skipped") || error.toLowerCase().includes("assertion failed");
+                const lower = error.toLowerCase();
+                // SPL Token error 1 (InsufficientFunds) surfaces as {"Custom":1} from the deposit CPI —
+                // the wallet lacks enough of a token to fund the rebalance. Treat as a skip, not a hard
+                // error, so it cools down instead of retrying (and failing) every tick.
+                const isInsufficient = error.includes('"Custom":1') || lower.includes("insufficient");
+                const isSkip = lower.includes("skipped") || lower.includes("assertion failed") || isInsufficient;
                 if (isSkip) {
                   skipUntil[pos.publicKey] = Date.now() + REBALANCE_SKIP_COOLDOWN_MS;
-                  addLog("warn", "rebalance.skip", `Rebalance skipped — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error} (cooling down 30m)`, { pool: poolAddr });
+                  const hint = isInsufficient ? " — wallet lacks tokens to fund the deposit; fund the wallet or enable Reserve Basket Swap" : "";
+                  addLog("warn", "rebalance.skip", `Rebalance skipped — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}${hint} (cooling down 30m)`, { pool: poolAddr });
                 } else {
                   addLog("error", "rebalance.error", `Rebalance failed — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}`, { pool: poolAddr });
                 }
