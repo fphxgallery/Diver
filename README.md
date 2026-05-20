@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.3
+- **Reactive basket swap now covers the build step.** Insufficient funds for a rebalance can surface at two stages: the balanced-strategy simulate (which only computes target amounts) and `rebalancePosition()`'s internal compute-unit simulation (which actually attempts the deposit). Previously only the first was wrapped, so a single-sided position whose shortfall only appeared at build time would fail without ever attempting the basket swap. Simulate, ATA-ensure, and build are now inside one reactive boundary: an insufficient-funds failure at either stage triggers the basket swap and a single retry, and a persistent failure becomes a clean 30-minute skip.
+
 ### v1.3.2
 - **Basket swap is now reactive.** Previously the reserve-basket swap ran proactively on every rebalance trigger (including edge-proximity), causing excessive swapping. It now only fires when a rebalance actually fails for insufficient funds: the monitor tries the rebalance using existing wallet tokens, and only on an insufficient-funds failure does it swap from the basket to acquire the deficit token and retry once.
 - **Basket swap / top-up in server logs.** Swaps, top-ups, and their failures now appear in the Server Logs (`rebalance.swap`, `rebalance.topup`, `rebalance.swap.fail`, `rebalance.swap.retry`, `rebalance.ata`) alongside `rebalance.trigger`, instead of only stdout.

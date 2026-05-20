@@ -217,72 +217,77 @@ export async function executeRebalanceWithKeypair(params: {
     }
   }
 
-  let rebalanceResponse: unknown;
+  const dlmmRebalance = pool as unknown as {
+    rebalancePosition: (
+      response: unknown, maxActiveBinSlippage: BN
+    ) => Promise<{ initBinArrayInstructions: TransactionInstruction[]; rebalancePositionInstruction: TransactionInstruction[] }>;
+  };
+
+  // Re-ensure both ATAs exist (a basket swap can unwrap+close the wSOL ATA). Idempotent.
+  async function ensureAtas() {
+    const [reAtaX, reAtaY] = await Promise.all([
+      getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
+      getOrCreateATAInstruction(connection, pool.tokenY.mint.address, params.keypair.publicKey, tokenYProgram, params.keypair.publicKey),
+    ]);
+    const ixs = [reAtaX.ix, reAtaY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
+    if (ixs.length > 0) {
+      addLog("info", "rebalance.ata", `Re-creating ${ixs.length} ATA(s) before rebalance build`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
+      await signSendConfirm(connection, params.keypair, ixs, priorityFee, 100_000);
+    }
+  }
+
+  // simulate → ensure ATAs → build. Insufficient-funds can surface at EITHER the
+  // balanced-strategy simulate OR rebalancePosition()'s internal CU simulation
+  // ("process deposit"), so both live inside one reactive boundary.
+  async function simulateAndBuild() {
+    const response = await runSimulate();
+    await ensureAtas();
+    return dlmmRebalance.rebalancePosition(response, new BN(s.maxActiveBinSlippage));
+  }
+
+  async function isInsufficientFunds(e: unknown): Promise<boolean> {
+    const logs = e instanceof SendTransactionError ? (e.logs ?? await e.getLogs(connection).catch(() => undefined)) : undefined;
+    const text = (e instanceof Error ? e.message : String(e)) + (logs ? "\n" + logs.join("\n") : "");
+    return text.includes("insufficient funds") || text.includes('"Custom":1');
+  }
+
+  let built: { initBinArrayInstructions: TransactionInstruction[]; rebalancePositionInstruction: TransactionInstruction[] } | undefined;
   try {
-    rebalanceResponse = await runSimulate();
+    built = await simulateAndBuild();
   } catch (e) {
     // Reactive basket swap: only when the rebalance can't fund itself. Swap from the
     // basket to acquire the deficit token, re-derive the top-up, and retry once.
-    const logs = e instanceof SendTransactionError ? (e.logs ?? await e.getLogs(connection).catch(() => undefined)) : undefined;
-    const insufficient = !!logs?.some(l => l.includes("insufficient funds"));
-    let recovered = false;
+    const insufficient = await isInsufficientFunds(e);
     if (insufficient && params.basketSwapEnabled && params.basket && params.basket.length > 0) {
       try {
         const w = await readWalletRaw();
         if (await tryAcquireDeficitFromBasket(w.x, w.y)) {
           const w2 = await readWalletRaw();
           applyTopUpFromWallet(w2.x, w2.y);
-          rebalanceResponse = await runSimulate();
-          recovered = true;
+          built = await simulateAndBuild();
         }
       } catch (retryErr) {
         addLog("warn", "rebalance.swap.retry", `Basket-swap retry failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
       }
     }
-    if (!recovered) {
-      if (e instanceof SendTransactionError) {
-        if (insufficient) {
-          const xSym = pool.tokenX.mint.address.toBase58().slice(0, 8);
-          const ySym = pool.tokenY.mint.address.toBase58().slice(0, 8);
-          throw new Error(`Rebalance skipped: wallet lacks tokens for deposit (${xSym}… / ${ySym}…)${params.basketSwapEnabled ? " and the reserve basket couldn't cover it" : ""}.`);
-        }
-        throw new Error(`Simulation failed. Logs:\n${logs?.join("\n") ?? e.message}`);
+    if (!built) {
+      if (insufficient) {
+        const xSym = pool.tokenX.mint.address.toBase58().slice(0, 8);
+        const ySym = pool.tokenY.mint.address.toBase58().slice(0, 8);
+        throw new Error(`Rebalance skipped: wallet lacks tokens for deposit (${xSym}… / ${ySym}…)${params.basketSwapEnabled ? " and the reserve basket couldn't cover it" : ""}.`);
       }
       const msg = e instanceof Error ? e.message : String(e);
       const stack = e instanceof Error ? (e.stack ?? "") : "";
-      console.error(`[diver] simulateRebalance assertion — pool=${params.poolAddress} pos=${params.positionKey}\nmsg: ${msg}\nstack: ${stack}`);
+      console.error(`[diver] simulateAndBuild failed — pool=${params.poolAddress} pos=${params.positionKey}\nmsg: ${msg}\nstack: ${stack}`);
       if (msg.toLowerCase().includes("assertion failed")) {
         throw new Error(`Rebalance skipped: SDK assertion failed — position may be empty or in an invalid state (${msg})`);
       }
-      throw e;
+      throw e instanceof Error ? e : new Error(msg);
     }
   }
 
-  // Re-ensure both ATAs exist right before building the rebalance. A basket swap can
-  // unwrap+close the wSOL ATA (Jupiter default wrapAndUnwrapSol), and rebalancePosition()
-  // runs an internal CU simulation that fails with AccountNotInitialized (3012) if the
-  // user token account is missing. Idempotent — no-op when the ATAs already exist.
-  {
-    const [reAtaX, reAtaY] = await Promise.all([
-      getOrCreateATAInstruction(connection, pool.tokenX.mint.address, params.keypair.publicKey, tokenXProgram, params.keypair.publicKey),
-      getOrCreateATAInstruction(connection, pool.tokenY.mint.address, params.keypair.publicKey, tokenYProgram, params.keypair.publicKey),
-    ]);
-    const reAtaIxs = [reAtaX.ix, reAtaY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
-    if (reAtaIxs.length > 0) {
-      addLog("info", "rebalance.ata", `Re-creating ${reAtaIxs.length} ATA(s) before rebalance build`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
-      await signSendConfirm(connection, params.keypair, reAtaIxs, priorityFee, 100_000);
-    }
-  }
-
-  const { initBinArrayInstructions, rebalancePositionInstruction } = await (pool as unknown as {
-    rebalancePosition: (
-      response: unknown,
-      maxActiveBinSlippage: BN
-    ) => Promise<{
-      initBinArrayInstructions: TransactionInstruction[];
-      rebalancePositionInstruction: TransactionInstruction[];
-    }>;
-  }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
+  if (!built) throw new Error("Rebalance skipped: build did not complete");
+  const { initBinArrayInstructions, rebalancePositionInstruction } = built;
 
   // Send inline, each with its own fresh blockhash + priority fee, and confirm before
   // moving on. Returns landed signatures.
