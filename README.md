@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.5
+- **Boot version log.** The server now logs `Diver server vX.Y.Z starting` at startup (container stdout + Server Logs `server.start` event), making it easy to verify which build is actually running after a deploy/rebuild.
+
 ### v1.3.4
 - **Robust insufficient-funds detection.** The Meteora SDK wraps/re-throws the build-step simulation failure as a plain error, so the `insufficient funds` / `Custom:1` markers don't always live in `error.message`. Detection now also inspects the error stack, any `.logs` array, and the serialized error, and matches `custom program error: 0x1`. Previously these failures slipped past the reactive boundary in `rebalance-server` and were only caught (as a skip) by the monitor backstop — the basket swap never engaged. Now an insufficient-funds failure correctly triggers the reserve-basket swap and retry.
 

@@ -1,5 +1,15 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    let version = "unknown";
+    try {
+      version = ((await import("../package.json")) as { default?: { version?: string }; version?: string }).default?.version
+        ?? ((await import("../package.json")) as { version?: string }).version
+        ?? "unknown";
+    } catch { /* ignore */ }
+    const { addLog } = await import("./lib/server/server-log");
+    console.log(`[diver] Diver server v${version} starting`);
+    addLog("info", "server.start", `Diver server v${version} starting`, { version });
+
     const { loadPersistedEntries } = await import("./lib/server/persisted-store");
     const { setKeyInMemory } = await import("./lib/server/key-store");
     const { Keypair } = await import("@solana/web3.js");
