@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.6
+- **Add `.dockerignore` — fixes stale deploys.** The Dockerfile does `COPY . .`, and with no `.dockerignore` the host's `apps/web/.next` build output was copied into the image; `next build` then reused that cache and produced a bundle mixing freshly-compiled and stale (cached) modules. Net effect: version bumps appeared to deploy while actual code (e.g. the rebalance logic) stayed several versions behind, even with `--build`/`--no-cache`. The `.dockerignore` now excludes `.next`, `node_modules`, `.git`, and secrets so every build compiles from clean source.
+
 ### v1.3.5
 - **Boot version log.** The server now logs `Diver server vX.Y.Z starting` at startup (container stdout + Server Logs `server.start` event), making it easy to verify which build is actually running after a deploy/rebuild.
 

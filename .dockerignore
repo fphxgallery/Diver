@@ -1,0 +1,23 @@
+# Never copy host build output or deps into the image — `COPY . .` would otherwise
+# pull a stale apps/web/.next, and `next build` reuses its cache, producing a bundle
+# that mixes freshly-compiled and cached (stale) modules.
+**/node_modules
+node_modules
+**/.next
+.next
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Runtime data + secrets
+data
+.env
+.env.*
+!.env.example
+
+# Misc
+*.log
+.DS_Store
