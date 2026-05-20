@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.4
+- **Robust insufficient-funds detection.** The Meteora SDK wraps/re-throws the build-step simulation failure as a plain error, so the `insufficient funds` / `Custom:1` markers don't always live in `error.message`. Detection now also inspects the error stack, any `.logs` array, and the serialized error, and matches `custom program error: 0x1`. Previously these failures slipped past the reactive boundary in `rebalance-server` and were only caught (as a skip) by the monitor backstop — the basket swap never engaged. Now an insufficient-funds failure correctly triggers the reserve-basket swap and retry.
+
 ### v1.3.3
 - **Reactive basket swap now covers the build step.** Insufficient funds for a rebalance can surface at two stages: the balanced-strategy simulate (which only computes target amounts) and `rebalancePosition()`'s internal compute-unit simulation (which actually attempts the deposit). Previously only the first was wrapped, so a single-sided position whose shortfall only appeared at build time would fail without ever attempting the basket swap. Simulate, ATA-ensure, and build are now inside one reactive boundary: an insufficient-funds failure at either stage triggers the basket swap and a single retry, and a persistent failure becomes a clean 30-minute skip.
 

@@ -245,10 +245,22 @@ export async function executeRebalanceWithKeypair(params: {
     return dlmmRebalance.rebalancePosition(response, new BN(s.maxActiveBinSlippage));
   }
 
+  // The SDK may wrap/re-throw the simulation failure as a plain Error, so the
+  // "insufficient funds" / Custom:1 markers can live in the message, the stack, a
+  // `.logs` array, or only in the serialized error. Check all of them.
   async function isInsufficientFunds(e: unknown): Promise<boolean> {
-    const logs = e instanceof SendTransactionError ? (e.logs ?? await e.getLogs(connection).catch(() => undefined)) : undefined;
-    const text = (e instanceof Error ? e.message : String(e)) + (logs ? "\n" + logs.join("\n") : "");
-    return text.includes("insufficient funds") || text.includes('"Custom":1');
+    let text = e instanceof Error ? `${e.name}: ${e.message}\n${e.stack ?? ""}` : String(e);
+    if (e instanceof SendTransactionError) {
+      const logs = e.logs ?? await e.getLogs(connection).catch(() => null);
+      if (logs) text += "\n" + logs.join("\n");
+    }
+    try {
+      const anyE = e as Record<string, unknown>;
+      if (Array.isArray(anyE.logs)) text += "\n" + (anyE.logs as unknown[]).join("\n");
+      text += "\n" + JSON.stringify(e, Object.getOwnPropertyNames(e as object));
+    } catch { /* ignore unstringifiable errors */ }
+    const lower = text.toLowerCase();
+    return lower.includes("insufficient funds") || lower.includes('"custom":1') || lower.includes("custom program error: 0x1");
   }
 
   let built: { initBinArrayInstructions: TransactionInstruction[]; rebalancePositionInstruction: TransactionInstruction[] } | undefined;

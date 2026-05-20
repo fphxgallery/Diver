@@ -128,7 +128,7 @@ async function runCheck() {
                 // SPL Token error 1 (InsufficientFunds) surfaces as {"Custom":1} from the deposit CPI —
                 // the wallet lacks enough of a token to fund the rebalance. Treat as a skip, not a hard
                 // error, so it cools down instead of retrying (and failing) every tick.
-                const isInsufficient = error.includes('"Custom":1') || lower.includes("insufficient");
+                const isInsufficient = error.includes('"Custom":1') || lower.includes("insufficient") || lower.includes("custom program error: 0x1");
                 const isSkip = lower.includes("skipped") || lower.includes("assertion failed") || isInsufficient;
                 if (isSkip) {
                   skipUntil[pos.publicKey] = Date.now() + REBALANCE_SKIP_COOLDOWN_MS;
