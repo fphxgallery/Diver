@@ -2,7 +2,6 @@ import { getAll } from "./key-store";
 import { getUserPositions } from "@/lib/meteora/positions";
 import { computePositionHealth, shouldAutoRebalance } from "@/lib/meteora/monitor";
 import { executeRebalanceWithKeypair } from "@/lib/meteora/rebalance-server";
-import { signAndSendTransactionWithKeypair } from "@/lib/solana/send";
 import { addLog } from "./server-log";
 import { getWalletHoldings, fetchPrices, type Holding } from "./portfolio-value";
 import { recordValueSnapshot } from "./value-history-store";
@@ -103,7 +102,7 @@ async function runCheck() {
               let error: string | undefined;
 
               try {
-                const txBase64s = await executeRebalanceWithKeypair({
+                const sigs = await executeRebalanceWithKeypair({
                   poolAddress: poolAddr,
                   positionKey: pos.publicKey,
                   keypair: entry.keypair,
@@ -119,10 +118,7 @@ async function runCheck() {
                     numBins: entry.settings.defaultNumBins,
                   },
                 });
-                for (const tx of txBase64s) {
-                  const sig = await signAndSendTransactionWithKeypair(tx, entry.keypair, "mainnet-beta", entry.rpcUrl);
-                  txSigs.push(sig);
-                }
+                txSigs.push(...sigs);
                 success = true;
                 h.autoRebalanceTriggered = true;
                 addLog("info", "rebalance.success", `Rebalance succeeded — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${txSigs.length} tx)`, { txs: txSigs.length, pool: poolAddr });

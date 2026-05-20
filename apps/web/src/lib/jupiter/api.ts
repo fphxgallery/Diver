@@ -31,6 +31,10 @@ export interface OrderResponse {
   otherAmountThreshold: string;
   priceImpact: number;
   lastValidBlockHeight: string;
+  /** Winning router: "iris" (Metis), "jupiterz" (RFQ), "dflow", "okx" */
+  router?: string;
+  /** "ultra" = all routers competed (default params); "manual" = restricted by optional params */
+  mode?: string;
   errorCode?: number;
   errorMessage?: string;
   error?: string;
@@ -75,14 +79,17 @@ export async function getSwapOrder(params: {
   inputMint: string;
   outputMint: string;
   amount: bigint;
-  slippageBps: number;
+  /** Omit for Ultra mode (all routers compete, auto slippage). Setting it forces manual mode. */
+  slippageBps?: number;
   taker: string;
 }): Promise<OrderResponse> {
   const url = new URL(`${SWAP_API}/order`);
   url.searchParams.set("inputMint", params.inputMint);
   url.searchParams.set("outputMint", params.outputMint);
   url.searchParams.set("amount", params.amount.toString());
-  url.searchParams.set("slippageBps", params.slippageBps.toString());
+  // Any optional param (incl. slippageBps) demotes the order from "ultra" to "manual"
+  // mode, which disables the JupiterZ/Dflow/OKX routers. Only send it when explicitly set.
+  if (params.slippageBps !== undefined) url.searchParams.set("slippageBps", params.slippageBps.toString());
   url.searchParams.set("taker", params.taker);
 
   const res = await fetch(url.toString(), { headers: jupHeaders(), cache: "no-store" });
@@ -125,8 +132,27 @@ export function toRawAmount(amount: string, decimals: number): bigint {
   return BigInt(int + fracPadded);
 }
 
-export function priceImpactLabel(pct: number): "low" | "medium" | "high" {
-  const abs = Math.abs(pct * 100);
+/** USD prices via Jupiter price v3 (lite-api, no key needed). Missing mints omitted. */
+export async function getUsdPrices(mints: string[]): Promise<Record<string, number>> {
+  const ids = [...new Set(mints)].filter(Boolean).join(",");
+  if (!ids) return {};
+  try {
+    const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${ids}`, { cache: "no-store" });
+    if (!res.ok) return {};
+    const json = (await res.json()) as Record<string, { usdPrice?: number }>;
+    const out: Record<string, number> = {};
+    for (const [m, d] of Object.entries(json)) {
+      const p = Number(d?.usdPrice ?? 0);
+      if (p > 0) out[m] = p;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function impactLevel(pct: number): "low" | "medium" | "high" {
+  const abs = Math.abs(pct);
   if (abs < 1) return "low";
   if (abs < 5) return "medium";
   return "high";

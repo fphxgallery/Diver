@@ -69,16 +69,20 @@ export async function acquireDeficitToken(params: {
   const inputRaw = Math.floor((swapUsd / source.price) * 10 ** source.decimals);
   if (inputRaw <= 0) return null;
 
-  const slippageBps = Math.max(50, Math.round(params.maxPriceImpactPct * 100));
+  // Market floor: fair deficit out at mid price, minus the allowed impact. Guards the fill
+  // without relying on Jupiter's unreliable priceImpact field.
+  const fairOutUi = swapUsd / pDef;
+  const minOutRaw = BigInt(Math.floor(fairOutUi * (1 - params.maxPriceImpactPct / 100) * 10 ** params.deficitDecimals));
+
   try {
+    // No slippageBps → Ultra mode (all routers + RFQ).
     const res = await swapWithKeypair({
       inputMint: source.mint,
       outputMint: params.deficitMint,
       amount: BigInt(inputRaw),
-      slippageBps,
       keypair: params.keypair,
       apiKey: params.apiKey,
-      maxPriceImpactPct: params.maxPriceImpactPct,
+      minOutAmount: minOutRaw,
       connection: params.connection,
     });
     return { signature: res.signature, source: source.symbol, outAmount: res.outAmount };

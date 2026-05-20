@@ -12,9 +12,10 @@ import { useTokenStore, SOL_TOKEN } from "@/store/token-store";
 import {
   getSwapOrder,
   executeSwap,
+  getUsdPrices,
   formatAmount,
   toRawAmount,
-  priceImpactLabel,
+  impactLevel,
   type JupiterToken,
   type OrderResponse,
 } from "@/lib/jupiter/api";
@@ -42,7 +43,9 @@ export default function SwapPage() {
   const [tokenIn, setTokenIn] = useState<JupiterToken>(SOL_TOKEN);
   const [tokenOut, setTokenOut] = useState<JupiterToken>(USDC);
   const [amountIn, setAmountIn] = useState("");
-  const [slippageBps, setSlippageBps] = useState(50);
+  // null = Auto (Ultra mode — all routers compete, Jupiter manages slippage).
+  // Any numeric value forces manual mode and disables the RFQ routers.
+  const [slippageBps, setSlippageBps] = useState<number | null>(null);
   const [customSlippage, setCustomSlippage] = useState("");
   const [showSlippage, setShowSlippage] = useState(false);
   const [selectorOpen, setSelectorOpen] = useState<"in" | "out" | null>(null);
@@ -83,7 +86,7 @@ export default function SwapPage() {
     setQuoteError("");
     try {
       const raw = toRawAmount(amountIn, tokenIn.decimals);
-      const q = await getSwapOrder({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps, taker: active.publicKey });
+      const q = await getSwapOrder({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps: slippageBps ?? undefined, taker: active.publicKey });
       setQuote(q);
     } catch (e) {
       setQuoteError(e instanceof Error ? e.message : "Quote failed");
@@ -101,7 +104,7 @@ export default function SwapPage() {
     if (!active) throw new Error("No wallet");
     // Fetch a fresh order at sign time to avoid stale blockhash
     const raw = toRawAmount(amountIn, tokenIn.decimals);
-    const order = await getSwapOrder({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps, taker: active.publicKey });
+    const order = await getSwapOrder({ inputMint: tokenIn.address, outputMint: tokenOut.address, amount: raw, slippageBps: slippageBps ?? undefined, taker: active.publicKey });
     const signed = signTransaction(order.transaction!, active, password);
     const result = await executeSwap({ signedTransaction: signed, requestId: order.requestId });
     if (result.status !== "Success") throw new Error(result.error ?? "Swap failed");
@@ -111,7 +114,28 @@ export default function SwapPage() {
     setQuote(null);
   }
 
-  const impactLevel = quote ? priceImpactLabel(quote.priceImpact) : null;
+  const { data: impactPrices } = useQuery({
+    queryKey: ["impactPrices", tokenIn.address, tokenOut.address],
+    queryFn: () => getUsdPrices([tokenIn.address, tokenOut.address]),
+    staleTime: 30_000,
+  });
+
+  // Honest impact = value received vs market mid (incl. fees/spread), not Jupiter's
+  // unreliable per-pool priceImpact field. Falls back to Jupiter's field if prices missing.
+  const marketImpactPct = (() => {
+    if (!quote || !impactPrices) return null;
+    const pIn = impactPrices[tokenIn.address];
+    const pOut = impactPrices[tokenOut.address];
+    if (!pIn || !pOut) return null;
+    const inUsd = (Number(quote.inAmount) / 10 ** tokenIn.decimals) * pIn;
+    const outUsd = (Number(quote.outAmount) / 10 ** tokenOut.decimals) * pOut;
+    if (inUsd <= 0) return null;
+    return ((inUsd - outUsd) / inUsd) * 100;
+  })();
+  const displayImpactPct = quote
+    ? (marketImpactPct ?? Math.abs(quote.priceImpact) * 100)
+    : 0;
+  const impactColor = impactLevel(displayImpactPct);
   const canSwap = !!quote && !!active && !quoteLoading;
 
   return (
@@ -122,14 +146,18 @@ export default function SwapPage() {
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-semibold">Swap</h1>
             <button onClick={() => setShowSlippage(v => !v)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <Settings2 className="w-4 h-4" /> {(slippageBps / 100).toFixed(2)}% slippage
+              <Settings2 className="w-4 h-4" /> {slippageBps === null ? "Auto" : `${(slippageBps / 100).toFixed(2)}%`} slippage
             </button>
           </div>
 
           {showSlippage && (
             <Card className="p-3 border-border bg-card">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-muted-foreground mr-1">Slippage</span>
+                <button onClick={() => { setSlippageBps(null); setCustomSlippage(""); }}
+                  className={cn("px-3 py-1 rounded-md text-sm transition-colors", slippageBps === null ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground")}>
+                  Auto
+                </button>
                 {SLIPPAGE_OPTIONS.map(s => (
                   <button key={s} onClick={() => { setSlippageBps(s * 100); setCustomSlippage(""); }}
                     className={cn("px-3 py-1 rounded-md text-sm transition-colors", slippageBps === s * 100 ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground")}>
@@ -139,6 +167,11 @@ export default function SwapPage() {
                 <Input value={customSlippage} onChange={e => { setCustomSlippage(e.target.value); const n = parseFloat(e.target.value); if (!isNaN(n) && n > 0 && n <= 50) setSlippageBps(Math.round(n * 100)); }}
                   placeholder="Custom" className="h-7 w-20 text-sm bg-secondary border-border" />
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {slippageBps === null
+                  ? "Auto routes through all Jupiter routers (incl. RFQ) for best price — recommended."
+                  : "Manual slippage restricts routing and disables RFQ routers. May worsen price."}
+              </p>
             </Card>
           )}
 
@@ -194,15 +227,23 @@ export default function SwapPage() {
           {quote && (
             <Card className="p-3 border-border bg-card text-sm space-y-1.5">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Price impact</span>
-                <span className={cn(impactLevel === "low" ? "text-green-400" : impactLevel === "medium" ? "text-yellow-400" : "text-destructive")}>
-                  {(Math.abs(quote.priceImpact) * 100).toFixed(3)}%{impactLevel !== "low" && " ⚠"}
+                <span className="text-muted-foreground">{marketImpactPct !== null ? "Price impact (vs market)" : "Price impact"}</span>
+                <span className={cn(impactColor === "low" ? "text-green-400" : impactColor === "medium" ? "text-yellow-400" : "text-destructive")}>
+                  {Math.max(0, displayImpactPct).toFixed(3)}%{impactColor !== "low" && " ⚠"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Min. received</span>
                 <span>{formatAmount(quote.otherAmountThreshold, tokenOut.decimals)} {tokenOut.symbol}</span>
               </div>
+              {quote.mode && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Route</span>
+                  <span className={cn("capitalize", quote.mode === "ultra" ? "text-green-400" : "text-muted-foreground")}>
+                    {quote.mode === "ultra" ? "Ultra" : "Manual"}{quote.router ? ` · ${quote.router}` : ""}
+                  </span>
+                </div>
+              )}
             </Card>
           )}
 

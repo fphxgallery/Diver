@@ -16,17 +16,20 @@ export async function swapWithKeypair(params: {
   inputMint: string;
   outputMint: string;
   amount: bigint;
-  slippageBps: number;
+  /** Omit for Ultra mode (all routers compete, auto slippage). Setting it forces manual mode. */
+  slippageBps?: number;
   keypair: Keypair;
   apiKey: string;
-  maxPriceImpactPct: number;
+  /** Reject the swap if quoted output is below this (raw units). Caller derives it from market price. */
+  minOutAmount?: bigint;
   connection: Connection;
 }): Promise<{ signature: string; inAmount: string; outAmount: string }> {
   const orderUrl = new URL(`${SWAP_API}/order`);
   orderUrl.searchParams.set("inputMint", params.inputMint);
   orderUrl.searchParams.set("outputMint", params.outputMint);
   orderUrl.searchParams.set("amount", params.amount.toString());
-  orderUrl.searchParams.set("slippageBps", params.slippageBps.toString());
+  // Omitting slippageBps keeps the order in Ultra mode (all routers + RFQ); setting it demotes to manual.
+  if (params.slippageBps !== undefined) orderUrl.searchParams.set("slippageBps", params.slippageBps.toString());
   orderUrl.searchParams.set("taker", params.keypair.publicKey.toBase58());
 
   const orderRes = await fetch(orderUrl.toString(), { headers: headers(params.apiKey), cache: "no-store" });
@@ -37,9 +40,9 @@ export async function swapWithKeypair(params: {
   const order: OrderResponse = await orderRes.json();
   if (!order.transaction) throw new Error(order.errorMessage ?? order.error ?? "No swap route found");
 
-  const impactPct = Math.abs(order.priceImpact) * 100;
-  if (impactPct > params.maxPriceImpactPct) {
-    throw new Error(`Swap price impact ${impactPct.toFixed(2)}% exceeds cap ${params.maxPriceImpactPct}%`);
+  // Guard on quoted output vs a market-derived floor — Jupiter's priceImpact field is unreliable.
+  if (params.minOutAmount !== undefined && BigInt(order.outAmount) < params.minOutAmount) {
+    throw new Error(`Swap output ${order.outAmount} below market floor ${params.minOutAmount} — skipping (price moved or route too thin)`);
   }
 
   const tx = VersionedTransaction.deserialize(Buffer.from(order.transaction, "base64"));

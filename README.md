@@ -102,6 +102,11 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.1
+- **Swap routing → Ultra mode.** `/swap/v2/order` only runs in "ultra" mode (all routers compete — Metis, JupiterZ RFQ, Dflow, OKX) when called with no optional params. We were sending `slippageBps` on every request, which demoted to "manual" mode and disabled the RFQ routers, producing far worse routes. `slippageBps` is now optional; the swap page defaults to "Auto" (Ultra) and only sends a value when you pick a manual slippage. Quote card shows the winning route (e.g. "Ultra · jupiterz").
+- **Honest price impact.** Jupiter's `priceImpact` response field is unreliable — it reported 5–15% on swaps that actually filled within ~0.2% of market mid. The swap page now computes real impact as value received vs Jupiter price-v3 mid ("Price impact (vs market)"), falling back to the raw field only when a token price is unavailable. The basket auto-swap guard switched from the bogus `priceImpact` field to a market-derived minimum-output floor.
+- **Rebalance transaction landing.** Auto-rebalances were failing with "Transaction expired (block height exceeded)". Two fixes: (1) server-built txs (rebalance, init-bin-array, ATA creation) now carry an adaptive priority fee derived from recent network fees; (2) each tx is sent with its own fresh blockhash instead of sharing one stale blockhash across sequentially-confirmed txs. Rebalance txs are now sent and confirmed server-side inline, returning landed signatures.
+
 ### v1.3.0
 - **Reserve basket swap on rebalance deficit.** When an auto-rebalance needs a token the wallet lacks (the common out-of-range single-sided case where a balanced rebalance has no token to deposit on one side), the monitor can now swap from a configured reserve basket to acquire the deficit token, then proceed with the top-up and rebalance. New `basketSwapEnabled` setting plus a `basket` of reserve tokens with target weights.
 - **Basket source selection.** The swap pulls from whichever basket token is most over its target weight, so funding a deficit also nudges the basket back toward its target allocation.

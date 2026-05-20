@@ -1,4 +1,4 @@
-import { Connection, PublicKey, VersionedTransaction, TransactionMessage, SendTransactionError } from "@solana/web3.js";
+import { Connection, PublicKey, VersionedTransaction, TransactionMessage, SendTransactionError, ComputeBudgetProgram } from "@solana/web3.js";
 import type { Keypair, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
 import DLMM, { StrategyType, getOrCreateATAInstruction, getTokenProgramId } from "@meteora-ag/dlmm";
@@ -19,17 +19,54 @@ const DEFAULTS: RebalanceSettings = {
   maxActiveBinSlippage: 3,
 };
 
-function ixsToBase64(
+const PRIORITY_FEE_FLOOR = 50_000;    // microLamports per CU
+const PRIORITY_FEE_CEIL = 2_000_000;
+
+/** Adaptive priority fee from recent network fees, clamped. microLamports/CU. */
+async function getPriorityFeeMicroLamports(connection: Connection): Promise<number> {
+  try {
+    const fees = await connection.getRecentPrioritizationFees();
+    const vals = fees.map(f => f.prioritizationFee).filter(v => v > 0).sort((a, b) => a - b);
+    if (vals.length === 0) return PRIORITY_FEE_FLOOR;
+    const p75 = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.75))];
+    return Math.min(PRIORITY_FEE_CEIL, Math.max(PRIORITY_FEE_FLOOR, p75));
+  } catch {
+    return PRIORITY_FEE_FLOOR;
+  }
+}
+
+function hasComputeBudgetIx(instructions: TransactionInstruction[], discriminator: number): boolean {
+  return instructions.some(ix => ix.programId.equals(ComputeBudgetProgram.programId) && ix.data[0] === discriminator);
+}
+
+/**
+ * Build, sign, send, and confirm a tx from instructions with a FRESH blockhash and
+ * a priority fee. Each call fetches its own blockhash so sequential txs never inherit
+ * a stale one (the cause of "block height exceeded"). Skips adding a ComputeBudget ix
+ * if the instructions already include one (avoids duplicate-instruction failures).
+ */
+async function signSendConfirm(
+  connection: Connection,
+  keypair: Keypair,
   instructions: TransactionInstruction[],
-  payer: PublicKey,
-  blockhash: string
-): string {
+  priorityFee: number,
+  unitLimit?: number
+): Promise<string> {
+  const budget: TransactionInstruction[] = [];
+  if (unitLimit && !hasComputeBudgetIx(instructions, 2)) budget.push(ComputeBudgetProgram.setComputeUnitLimit({ units: unitLimit }));
+  if (!hasComputeBudgetIx(instructions, 3)) budget.push(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee }));
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   const msg = new TransactionMessage({
-    payerKey: payer,
+    payerKey: keypair.publicKey,
     recentBlockhash: blockhash,
-    instructions,
+    instructions: [...budget, ...instructions],
   }).compileToV0Message();
-  return Buffer.from(new VersionedTransaction(msg).serialize()).toString("base64");
+  const tx = new VersionedTransaction(msg);
+  tx.sign([keypair]);
+  const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
+  await confirmByPolling(connection, sig, lastValidBlockHeight);
+  return sig;
 }
 
 export async function executeRebalanceWithKeypair(params: {
@@ -70,18 +107,10 @@ export async function executeRebalanceWithKeypair(params: {
   ]);
   const ataInstructions = [ataX.ix, ataY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
 
+  const priorityFee = await getPriorityFeeMicroLamports(connection);
+
   if (ataInstructions.length > 0) {
-    const { blockhash: ataBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    const ataTx = new VersionedTransaction(
-      new TransactionMessage({
-        payerKey: params.keypair.publicKey,
-        recentBlockhash: ataBlockhash,
-        instructions: ataInstructions,
-      }).compileToV0Message()
-    );
-    ataTx.sign([params.keypair]);
-    const ataSig = await connection.sendRawTransaction(ataTx.serialize(), { skipPreflight: false, maxRetries: 3 });
-    await confirmByPolling(connection, ataSig, lastValidBlockHeight);
+    await signSendConfirm(connection, params.keypair, ataInstructions, priorityFee, 100_000);
   }
 
   // Dynamic 50/50 top-up: add deficit token + withdraw equivalent excess to keep total size stable.
@@ -224,13 +253,13 @@ export async function executeRebalanceWithKeypair(params: {
     }>;
   }).rebalancePosition(rebalanceResponse, new BN(s.maxActiveBinSlippage));
 
-  const { blockhash } = await connection.getLatestBlockhash();
-  const txBase64s: string[] = [];
-
+  // Send inline, each with its own fresh blockhash + priority fee, and confirm before
+  // moving on. Returns landed signatures.
+  const sigs: string[] = [];
   if (initBinArrayInstructions.length > 0) {
-    txBase64s.push(ixsToBase64(initBinArrayInstructions, params.keypair.publicKey, blockhash));
+    sigs.push(await signSendConfirm(connection, params.keypair, initBinArrayInstructions, priorityFee, 400_000));
   }
-  txBase64s.push(ixsToBase64(rebalancePositionInstruction, params.keypair.publicKey, blockhash));
+  sigs.push(await signSendConfirm(connection, params.keypair, rebalancePositionInstruction, priorityFee, 800_000));
 
-  return txBase64s;
+  return sigs;
 }
