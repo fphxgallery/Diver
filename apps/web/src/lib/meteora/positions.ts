@@ -38,6 +38,8 @@ export async function getUserPositions(
   activeBinPricePerToken: string;
   tokenXDecimals: number;
   tokenYDecimals: number;
+  tokenXMint: string;
+  tokenYMint: string;
 }> {
   const connection = rpcUrl ? new Connection(rpcUrl, "confirmed") : getConnection(cluster);
   const pool = await DLMM.create(connection, new PublicKey(poolAddress));
@@ -62,6 +64,8 @@ export async function getUserPositions(
     activeBinPricePerToken: activeBin.pricePerToken,
     tokenXDecimals: pool.tokenX.mint.decimals,
     tokenYDecimals: pool.tokenY.mint.decimals,
+    tokenXMint: pool.tokenX.mint.address.toBase58(),
+    tokenYMint: pool.tokenY.mint.address.toBase58(),
   };
 }
 

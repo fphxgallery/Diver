@@ -4,6 +4,8 @@ import { computePositionHealth, shouldAutoRebalance } from "@/lib/meteora/monito
 import { executeRebalanceWithKeypair } from "@/lib/meteora/rebalance-server";
 import { signAndSendTransactionWithKeypair } from "@/lib/solana/send";
 import { addLog } from "./server-log";
+import { getWalletHoldings, fetchPrices, type Holding } from "./portfolio-value";
+import { recordValueSnapshot } from "./value-history-store";
 import type { PositionHealth, RebalanceRecord } from "@/lib/meteora/monitor";
 
 export interface ServerMonitorState {
@@ -62,16 +64,21 @@ async function runCheck() {
 
   try {
     for (const entry of entries) {
-      if (entry.poolAddresses.length === 0) continue;
+      const positionContribs: Holding[] = [];
 
       for (let pi = 0; pi < entry.poolAddresses.length; pi++) {
         if (pi > 0) await new Promise(r => setTimeout(r, 500));
         const poolAddr = entry.poolAddresses[pi];
         await (async () => {
           try {
-            const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, entry.publicKey, "mainnet-beta", entry.rpcUrl);
+            const { userPositions, activeBinId, activeBinPricePerToken, tokenXDecimals, tokenYDecimals, tokenXMint, tokenYMint } = await getUserPositions(poolAddr, entry.publicKey, "mainnet-beta", entry.rpcUrl);
             addLog("info", "monitor.pool.check", `${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} — ${userPositions.length} position(s)`, { pool: poolAddr, positions: userPositions.length });
             for (const pos of userPositions) {
+              const xUi = parseFloat(pos.totalXAmount) / Math.pow(10, tokenXDecimals);
+              const yUi = parseFloat(pos.totalYAmount) / Math.pow(10, tokenYDecimals);
+              if (xUi > 0) positionContribs.push({ mint: tokenXMint, amount: xUi });
+              if (yUi > 0) positionContribs.push({ mint: tokenYMint, amount: yUi });
+
               const h = computePositionHealth(pos, activeBinId, entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8), {
                 pricePerToken: activeBinPricePerToken,
                 tokenXDecimals,
@@ -144,6 +151,18 @@ async function runCheck() {
             addLog("error", "monitor.pool.error", `Pool check failed — ${poolAddr.slice(0, 8)}: ${msg}`, { pool: poolAddr });
           }
         })();
+      }
+
+      // Record total portfolio value (wallet tokens + DLMM positions) — throttled to hourly.
+      try {
+        const holdings = await getWalletHoldings(entry.publicKey, entry.rpcUrl);
+        const prices = await fetchPrices([...holdings.map(h => h.mint), ...positionContribs.map(c => c.mint)]);
+        const walletUsd = holdings.reduce((s, h) => s + h.amount * (prices[h.mint] ?? 0), 0);
+        const positionsUsd = positionContribs.reduce((s, c) => s + c.amount * (prices[c.mint] ?? 0), 0);
+        await recordValueSnapshot(entry.publicKey, walletUsd + positionsUsd);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        addLog("warn", "value.snapshot.error", `Value snapshot failed — ${entry.publicKey.slice(0, 8)}: ${msg}`, { wallet: entry.publicKey.slice(0, 8) });
       }
     }
 

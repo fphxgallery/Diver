@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { getTopPairs, searchPairs, type DlmmPair } from "@/lib/meteora/pools";
+import { getTopPairs, searchPairs, getPair, type DlmmPair } from "@/lib/meteora/pools";
 import { getUserPositions, isPositionInRange, type PositionInfo } from "@/lib/meteora/positions";
 import { getOpeningPositions } from "@/lib/meteora/lpagent";
 
@@ -95,7 +95,20 @@ export const useDlmmStore = create<DlmmState>((set, get) => ({
         try {
           const { userPositions, activeBinId, tokenXDecimals, tokenYDecimals } = await getUserPositions(poolAddr, walletPubkey);
           const name = pairNames[poolAddr] ?? poolAddr.slice(0, 8);
-          const [tokenXSymbol, tokenYSymbol] = parseSymbols(name);
+          // Prefer authoritative on-chain X/Y symbols from the pool metadata;
+          // LP Agent pairName is often a single token and parseSymbols falls back to "X"/"Y".
+          let [tokenXSymbol, tokenYSymbol] = parseSymbols(name);
+          const known = get().pairs.find(p => p.address === poolAddr);
+          if (known) {
+            tokenXSymbol = known.token_x.symbol;
+            tokenYSymbol = known.token_y.symbol;
+          } else {
+            try {
+              const pair = await getPair(poolAddr);
+              tokenXSymbol = pair.token_x.symbol;
+              tokenYSymbol = pair.token_y.symbol;
+            } catch { /* keep parseSymbols fallback */ }
+          }
           userPositions.forEach(pos => {
             allPositions.push({
               ...pos,

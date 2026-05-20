@@ -11,6 +11,33 @@ import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID 
 import { getConnection, walletToKeypair, type Cluster } from "@/lib/meteora/web3-compat-boundary";
 import type { StoredWallet } from "@diver/keypair-store";
 
+/**
+ * Confirm a transaction by polling getSignatureStatuses over HTTP instead of
+ * the WebSocket signatureSubscribe used by connection.confirmTransaction().
+ * Many RPCs (and the public endpoint) rate-limit or 429 the WS, so HTTP
+ * polling is more robust for server-side use.
+ */
+export async function confirmByPolling(
+  connection: Connection,
+  signature: string,
+  lastValidBlockHeight: number,
+  timeoutMs = 60_000
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const { value } = await connection.getSignatureStatuses([signature]);
+    const status = value[0];
+    if (status) {
+      if (status.err) throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+      if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") return;
+    }
+    const height = await connection.getBlockHeight("confirmed");
+    if (height > lastValidBlockHeight) throw new Error("Transaction expired (block height exceeded)");
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error("Transaction confirmation timed out");
+}
+
 export function signTransaction(
   txBase64: string,
   wallet: StoredWallet,
@@ -40,8 +67,8 @@ export async function signAndSendTransaction(
     maxRetries: 3,
   });
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+  const { lastValidBlockHeight } = await connection.getLatestBlockhash();
+  await confirmByPolling(connection, sig, lastValidBlockHeight);
 
   return sig;
 }
@@ -118,8 +145,8 @@ export async function signAndSendTransactionWithKeypair(
       maxRetries: 3,
     });
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+    const { lastValidBlockHeight } = await connection.getLatestBlockhash();
+    await confirmByPolling(connection, sig, lastValidBlockHeight);
 
     return sig;
   } catch (e) {

@@ -48,11 +48,15 @@ interface Props {
   position: UserPositionWithMeta;
   tokenXPrice?: number;
   tokenYPrice?: number;
+  tokenXSymbol?: string;
+  tokenYSymbol?: string;
 }
 
 type Action = "claim" | "remove" | null;
 
-export function PositionCard({ position, tokenXPrice, tokenYPrice }: Props) {
+export function PositionCard({ position, tokenXPrice, tokenYPrice, tokenXSymbol, tokenYSymbol }: Props) {
+  const symbolX = tokenXSymbol ?? position.tokenXSymbol;
+  const symbolY = tokenYSymbol ?? position.tokenYSymbol;
   const { wallets, activeId } = useWalletStore();
   const active = wallets.find(w => w.id === activeId);
   const invalidate = useDlmmStore(s => s.invalidatePositions);
@@ -131,7 +135,7 @@ export function PositionCard({ position, tokenXPrice, tokenYPrice }: Props) {
       {/* Liquidity amounts */}
       <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
         <div>
-          <div className="text-muted-foreground text-xs mb-0.5">{position.tokenXSymbol}</div>
+          <div className="text-muted-foreground text-xs mb-0.5">{symbolX}</div>
           <div className="font-medium">{(parseFloat(position.totalXAmount) / Math.pow(10, position.tokenXDecimals)).toFixed(4)}</div>
           {tokenXPrice != null && (
             <div className="text-xs text-muted-foreground">${((parseFloat(position.totalXAmount) / Math.pow(10, position.tokenXDecimals)) * tokenXPrice).toFixed(2)}</div>
@@ -141,7 +145,7 @@ export function PositionCard({ position, tokenXPrice, tokenYPrice }: Props) {
           )}
         </div>
         <div>
-          <div className="text-muted-foreground text-xs mb-0.5">{position.tokenYSymbol}</div>
+          <div className="text-muted-foreground text-xs mb-0.5">{symbolY}</div>
           <div className="font-medium">{(parseFloat(position.totalYAmount) / Math.pow(10, position.tokenYDecimals)).toFixed(4)}</div>
           {tokenYPrice != null && (
             <div className="text-xs text-muted-foreground">${((parseFloat(position.totalYAmount) / Math.pow(10, position.tokenYDecimals)) * tokenYPrice).toFixed(2)}</div>

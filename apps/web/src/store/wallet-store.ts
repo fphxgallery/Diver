@@ -14,6 +14,7 @@ interface WalletState {
   setActive: (id: string) => void;
   getActive: () => StoredWallet | null;
   renameWallet: (id: string, name: string) => void;
+  setAvatar: (id: string, avatar: string | undefined) => void;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -56,6 +57,13 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   renameWallet: (id, name) => {
     const wallets = get().wallets.map(w => w.id === id ? { ...w, name } : w);
     wallets.forEach(w => { if (w.id === id) WalletStore.save(w); });
+    set({ wallets });
+  },
+
+  setAvatar: (id, avatar) => {
+    const wallets = get().wallets.map(w => w.id === id ? { ...w, avatar } : w);
+    const updated = wallets.find(w => w.id === id);
+    if (updated) WalletStore.save(updated);
     set({ wallets });
   },
 }));

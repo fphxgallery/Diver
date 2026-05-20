@@ -319,7 +319,7 @@ export default function DlmmPage() {
               <div className="space-y-3">
                 {userPositions.map(pos => {
                   const p = pairs.find(p => p.address === pos.lbPair);
-                  return <PositionCard key={pos.publicKey} position={pos} tokenXPrice={p?.token_x.price} tokenYPrice={p?.token_y.price} />;
+                  return <PositionCard key={pos.publicKey} position={pos} tokenXPrice={p?.token_x.price} tokenYPrice={p?.token_y.price} tokenXSymbol={p?.token_x.symbol} tokenYSymbol={p?.token_y.symbol} />;
                 })}
               </div>
             )}

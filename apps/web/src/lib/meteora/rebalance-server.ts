@@ -3,6 +3,7 @@ import type { Keypair, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
 import DLMM, { StrategyType, getOrCreateATAInstruction, getTokenProgramId } from "@meteora-ag/dlmm";
 import { getConnection, type Cluster } from "./web3-compat-boundary";
+import { confirmByPolling } from "@/lib/solana/send";
 import type { RebalanceSettings } from "./rebalance";
 
 const DEFAULTS: RebalanceSettings = {
@@ -72,7 +73,7 @@ export async function executeRebalanceWithKeypair(params: {
     );
     ataTx.sign([params.keypair]);
     const ataSig = await connection.sendRawTransaction(ataTx.serialize(), { skipPreflight: false, maxRetries: 3 });
-    await connection.confirmTransaction({ signature: ataSig, blockhash: ataBlockhash, lastValidBlockHeight }, "confirmed");
+    await confirmByPolling(connection, ataSig, lastValidBlockHeight);
   }
 
   // Dynamic 50/50 top-up: add deficit token + withdraw equivalent excess to keep total size stable.

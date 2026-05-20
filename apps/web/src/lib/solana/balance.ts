@@ -43,6 +43,7 @@ export interface PortfolioItem {
   logoURI?: string;
   balance: number;
   decimals: number;
+  usdPrice?: number;
 }
 
 export async function getPortfolioItems(publicKey: string, cluster: Cluster = "mainnet-beta"): Promise<PortfolioItem[]> {
@@ -69,7 +70,7 @@ const [solBalance, accounts] = await Promise.all([
       try {
         const res = await fetch(`https://lite-api.jup.ag/tokens/v2/search?query=${t.mint}&limit=1`, { cache: "no-store" });
         if (!res.ok) throw new Error();
-        const data = await res.json() as Array<{ id?: string; symbol?: string; name?: string; icon?: string }>;
+        const data = await res.json() as Array<{ id?: string; symbol?: string; name?: string; icon?: string; usdPrice?: number }>;
         const match = data.find(d => d.id === t.mint) ?? data[0];
         return {
           mint: t.mint,
@@ -78,6 +79,7 @@ const [solBalance, accounts] = await Promise.all([
           logoURI: match?.icon,
           balance: t.balance,
           decimals: t.decimals,
+          usdPrice: match?.usdPrice,
         };
       } catch {
         return {
@@ -91,6 +93,15 @@ const [solBalance, accounts] = await Promise.all([
     })
   );
 
+  let solPrice: number | undefined;
+  try {
+    const res = await fetch(`https://lite-api.jup.ag/tokens/v2/search?query=${NATIVE_SOL_MINT}&limit=1`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json() as Array<{ usdPrice?: number }>;
+      solPrice = data[0]?.usdPrice;
+    }
+  } catch {}
+
   const sol: PortfolioItem = {
     mint: NATIVE_SOL_MINT,
     symbol: "SOL",
@@ -98,7 +109,8 @@ const [solBalance, accounts] = await Promise.all([
     logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
     balance: solBalance,
     decimals: 9,
+    usdPrice: solPrice,
   };
 
-  return [sol, ...enriched.sort((a, b) => b.balance - a.balance)];
+  return [sol, ...enriched.sort((a, b) => (b.balance * (b.usdPrice ?? 0)) - (a.balance * (a.usdPrice ?? 0)))];
 }

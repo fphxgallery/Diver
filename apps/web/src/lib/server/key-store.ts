@@ -87,6 +87,14 @@ export function updateSettings(walletId: string, settings: MonitorSettings) {
   }
 }
 
+export function updateRpc(walletId: string, rpcUrl: string) {
+  const entry = store.get(walletId);
+  if (entry) {
+    entry.rpcUrl = rpcUrl;
+    updatePersistedMeta(walletId, { rpcUrl }).catch(e => console.error("[diver] Failed to persist rpc update:", e));
+  }
+}
+
 export function listUnlocked(): Array<{ walletId: string; publicKey: string; expiresAt: number }> {
   const now = Date.now();
   const result: Array<{ walletId: string; publicKey: string; expiresAt: number }> = [];

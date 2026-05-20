@@ -52,7 +52,23 @@ export default function SettingsPage() {
   }, [loadSettings]);
 
   function persistRpc() {
-    if (typeof window !== "undefined") localStorage.setItem("diver:rpc-url", rpcUrl);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("diver:rpc-url", rpcUrl);
+      // Push to server for all unlocked wallets so monitor uses the new RPC immediately
+      fetch("/api/monitor")
+        .then(r => r.ok ? r.json() : null)
+        .then((status: { unlocked?: Array<{ walletId: string }> } | null) => {
+          if (!status?.unlocked?.length) return;
+          for (const { walletId } of status.unlocked) {
+            fetch("/api/monitor", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "update_rpc", walletId, rpcUrl }),
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
     flash();
   }
 

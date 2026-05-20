@@ -24,7 +24,7 @@ interface MonitorStatus {
   lastRunAt: number | null;
   error: string | null;
   unlocked: Array<{ walletId: string; publicKey: string; expiresAt: number }>;
-  settingsByWallet?: Array<{ walletId: string; publicKey: string; settings: import("@/lib/meteora/monitor").MonitorSettings }>;
+  settingsByWallet?: Array<{ walletId: string; publicKey: string; settings: import("@/lib/meteora/monitor").MonitorSettings; rpcUrl?: string }>;
 }
 
 function useServerMonitor(pollInterval = 15_000) {
@@ -387,14 +387,25 @@ export function ServerMonitor() {
                     { label: "Composition", ok: s.compositionCheckEnabled },
                     { label: "Top-up 50/50", ok: s.topUpEnabled },
                   ];
+                  const rpcHost = (() => { try { return sw.rpcUrl ? new URL(sw.rpcUrl).host : ""; } catch { return sw.rpcUrl?.slice(0, 40) ?? ""; } })();
+                  const rpcIsPublic = rpcHost.endsWith("solana.com");
                   return (
-                    <div key={sw.walletId} className="flex flex-wrap gap-1.5 text-xs">
-                      {flags.map(f => (
-                        <span key={f.label} className={cn("px-1.5 py-0.5 rounded font-mono",
-                          f.ok ? "bg-green-500/15 text-green-400" : "bg-secondary text-muted-foreground"
-                        )}>{f.label}</span>
-                      ))}
-                      <span className="text-muted-foreground ml-1">Bins: {s.defaultNumBins} · Min $: {s.minPositionValueUsd}</span>
+                    <div key={sw.walletId} className="space-y-1.5">
+                      <div className="flex flex-wrap gap-1.5 text-xs">
+                        {flags.map(f => (
+                          <span key={f.label} className={cn("px-1.5 py-0.5 rounded font-mono",
+                            f.ok ? "bg-green-500/15 text-green-400" : "bg-secondary text-muted-foreground"
+                          )}>{f.label}</span>
+                        ))}
+                        <span className="text-muted-foreground ml-1">Bins: {s.defaultNumBins} · Min $: {s.minPositionValueUsd}</span>
+                      </div>
+                      {rpcHost && (
+                        <div className="text-xs">
+                          <span className="text-muted-foreground">RPC: </span>
+                          <span className={cn("font-mono", rpcIsPublic ? "text-yellow-400" : "text-green-400")}>{rpcHost}</span>
+                          {rpcIsPublic && <span className="text-yellow-400/70 ml-2">(public — lock + unlock to apply private RPC)</span>}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

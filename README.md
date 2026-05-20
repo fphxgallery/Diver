@@ -102,6 +102,15 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.2.1
+- **Always-on portfolio value chart.** The wallet portfolio page now shows a 30-day line chart of total value (wallet tokens + DLMM positions). History is recorded server-side by the monitor job (hourly, per unlocked wallet) so it accrues even with the browser closed, persisted to `${DIVER_DATA_DIR:-./data}/value-history.json`. The client merges server history with local snapshots. New `GET /api/value-history?owner=` endpoint.
+- **Wallet portfolio layout.** Total value moved inline with the Tokens heading; DLMM positions total shown inline with its heading; per-token USD values added. Wallet profile pictures (upload, resized to 128px WebP, stored in localStorage).
+- **Open DLMM Positions** section on the wallet portfolio page, with in/out-of-range status and current USD value per position.
+- **Real token symbols on positions.** My Positions cards now resolve authoritative on-chain token symbols (from pool metadata) instead of falling back to `X`/`Y` when the LP Agent pair name lacks a separator.
+- **RPC propagation fix.** Changing the RPC URL in Settings now pushes to the running monitor immediately (`update_rpc`) — no lock/unlock cycle needed. The Server Monitor panel displays the RPC the server is actually using, with a warning when it's still the public endpoint.
+- **WebSocket 429 fix.** Transaction confirmation no longer uses the WebSocket `signatureSubscribe` (which 429'd on rate-limited endpoints). All confirmation is now HTTP polling via `getSignatureStatuses`. Removed all remaining WebSocket code paths.
+- **Jupiter price API migration.** `price/v2` is dead (`Route not found`); migrated to `price/v3` (flat response, `usdPrice` field). Fixes the broken dashboard SOL price card.
+
 ### v1.2.0
 - **Dynamic 50/50 top-up on auto-rebalance.** New `topUpEnabled` setting. When a position drifts single-sided, the server now tops up the deficit token from the wallet (if available) and withdraws an equivalent amount of the excess token, keeping total position value stable. Skips entirely when wallet lacks the deficit token — never withdraws excess without a matching add. Scales partial top-ups proportionally.
 - **LP Agent deduplication.** Dashboard previously fired two simultaneous `getOpeningPositions` calls on mount. Consolidated into a single fetch stored on `dlmm-store`; dashboard reads from store instead of running its own query.

@@ -138,9 +138,10 @@ export default function DashboardPage() {
   const { data: solPrice } = useQuery({
     queryKey: ["sol-price"],
     queryFn: async () => {
-      const res = await fetch("https://lite-api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112");
+      const mint = "So11111111111111111111111111111111111111112";
+      const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${mint}`);
       const json = await res.json();
-      return json.data?.["So11111111111111111111111111111111111111112"]?.price as number | undefined;
+      return json?.[mint]?.usdPrice as number | undefined;
     },
     staleTime: 30_000,
     refetchInterval: 60_000,

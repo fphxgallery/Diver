@@ -5,6 +5,8 @@ export interface StoredWallet {
   keystore: Keystore;
   createdAt: number;
   derivationPath?: string;
+  /** Profile picture as a data URL (PNG/JPEG/WebP, base64-encoded). Stored in localStorage. */
+  avatar?: string;
 }
 
 export interface Keystore {

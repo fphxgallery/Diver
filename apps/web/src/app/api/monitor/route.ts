@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPin } from "@/lib/server/auth";
-import { listUnlocked, updatePools, updateSettings } from "@/lib/server/key-store";
+import { listUnlocked, updatePools, updateSettings, updateRpc } from "@/lib/server/key-store";
 import { getState, triggerCheckNow } from "@/lib/server/monitor-job";
 import { getAll } from "@/lib/server/key-store";
 import type { MonitorSettings } from "@/lib/meteora/monitor";
@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     walletId: unlocked.find(u => u.publicKey === e.publicKey)?.walletId ?? "",
     publicKey: e.publicKey,
     settings: e.settings,
+    rpcUrl: e.rpcUrl,
   }));
   return NextResponse.json({
     ...getState(),
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-/** POST /api/monitor — actions: check_now | update_pools | update_settings */
+/** POST /api/monitor — actions: check_now | update_pools | update_settings | update_rpc */
 export async function POST(req: NextRequest) {
   const auth = checkPin(req);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
     poolAddresses?: string[];
     pairNames?: Record<string, string>;
     settings?: MonitorSettings;
+    rpcUrl?: string;
   };
 
   switch (body.action) {
@@ -52,6 +54,12 @@ export async function POST(req: NextRequest) {
     case "update_settings":
       if (body.walletId && body.settings) {
         updateSettings(body.walletId, body.settings);
+      }
+      return NextResponse.json({ ok: true });
+
+    case "update_rpc":
+      if (body.walletId && body.rpcUrl) {
+        updateRpc(body.walletId, body.rpcUrl);
       }
       return NextResponse.json({ ok: true });
 
