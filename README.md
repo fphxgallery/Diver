@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.9
+- **Force clean build dir in Docker.** Dockerfile now runs `rm -rf apps/web/.next` immediately before `next build`, so a stale `.next` (from cache or a copied build dir) can never produce a split, mixed-version bundle. Belt-and-suspenders with the v1.3.6 `.dockerignore`.
+
 ### v1.3.8
 - **No cooldown for swap-eligible skips.** When Reserve Basket Swap is enabled, an insufficient-funds skip no longer applies the 30-minute cooldown — the position retries every monitor tick so the reactive basket-swap path is actually reached (previously the position sat in cooldown and the swap rarely ran). Non-funding skips (SDK assertion, empty position) still cool down. Trade-off: more RPC calls per tick for stuck positions; if rate-limited, the priority-fee fetch can be cached next.
 

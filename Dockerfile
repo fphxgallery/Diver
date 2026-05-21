@@ -25,7 +25,9 @@ ARG NEXT_PUBLIC_DIVER_PIN
 ARG NEXT_PUBLIC_RPC_URL
 ENV NEXT_PUBLIC_DIVER_PIN=$NEXT_PUBLIC_DIVER_PIN
 ENV NEXT_PUBLIC_RPC_URL=$NEXT_PUBLIC_RPC_URL
-RUN pnpm --filter web build
+# Wipe any pre-existing build output/cache so `next build` always compiles from
+# clean source — prevents stale .next chunks producing split (mixed-version) bundles.
+RUN rm -rf apps/web/.next && pnpm --filter web build
 
 # ---- runner ----
 FROM node:22-alpine AS runner
