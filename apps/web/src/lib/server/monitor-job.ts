@@ -128,12 +128,17 @@ async function runCheck() {
                 // SPL Token error 1 (InsufficientFunds) surfaces as {"Custom":1} from the deposit CPI —
                 // the wallet lacks enough of a token to fund the rebalance. Treat as a skip, not a hard
                 // error, so it cools down instead of retrying (and failing) every tick.
-                const isInsufficient = error.includes('"Custom":1') || lower.includes("insufficient") || lower.includes("custom program error: 0x1");
+                const isInsufficient = error.includes('"Custom":1') || lower.includes("insufficient") || lower.includes("custom program error: 0x1") || lower.includes("wallet lacks tokens") || lower.includes("reserve basket");
                 const isSkip = lower.includes("skipped") || lower.includes("assertion failed") || isInsufficient;
                 if (isSkip) {
-                  skipUntil[pos.publicKey] = Date.now() + REBALANCE_SKIP_COOLDOWN_MS;
-                  const hint = isInsufficient ? " — wallet lacks tokens to fund the deposit; fund the wallet or enable Reserve Basket Swap" : "";
-                  addLog("warn", "rebalance.skip", `Rebalance skipped — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}${hint} (cooling down 30m)`, { pool: poolAddr });
+                  // Swap-eligible funding skip: when basket swap is on, DON'T cool down — let the
+                  // position retry each tick so the reactive swap path is actually reached. Other
+                  // skips (assertion / empty position) still cool down to avoid spamming.
+                  const swapEligible = isInsufficient && entry.settings.basketSwapEnabled;
+                  if (!swapEligible) skipUntil[pos.publicKey] = Date.now() + REBALANCE_SKIP_COOLDOWN_MS;
+                  const hint = isInsufficient && !entry.settings.basketSwapEnabled ? " — wallet lacks tokens to fund the deposit; fund the wallet or enable Reserve Basket Swap" : "";
+                  const cool = swapEligible ? "retrying next tick (basket swap on)" : "cooling down 30m";
+                  addLog("warn", "rebalance.skip", `Rebalance skipped — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}${hint} (${cool})`, { pool: poolAddr });
                 } else {
                   addLog("error", "rebalance.error", `Rebalance failed — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)}: ${error}`, { pool: poolAddr });
                 }

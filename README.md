@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.8
+- **No cooldown for swap-eligible skips.** When Reserve Basket Swap is enabled, an insufficient-funds skip no longer applies the 30-minute cooldown — the position retries every monitor tick so the reactive basket-swap path is actually reached (previously the position sat in cooldown and the swap rarely ran). Non-funding skips (SDK assertion, empty position) still cool down. Trade-off: more RPC calls per tick for stuck positions; if rate-limited, the priority-fee fetch can be cached next.
+
 ### v1.3.7
 - **Basket-swap diagnostics.** `acquireDeficitToken` previously returned silently (no log) for the common no-op cases, so a rebalance could skip with no explanation for why the basket swap never ran. It now logs a reason for every outcome: `rebalance.swap.try` (about to swap, with USD size), `rebalance.swap.skip` with the specific reason (no reserve tokens besides the deficit / no price / **wallet holds none of the basket reserve tokens — free balance ~0** / swap size too small), `rebalance.swap` (success), `rebalance.swap.fail` (Jupiter error). Makes "I never see a basket swap" diagnosable from Server Logs.
 
