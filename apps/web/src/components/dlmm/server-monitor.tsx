@@ -14,7 +14,8 @@ import { decryptKeystore } from "@diver/keypair-store";
 import { getRpcUrl } from "@/lib/solana/client";
 import { healthColor, healthLabel, type PositionHealth, type RebalanceRecord } from "@/lib/meteora/monitor";
 import { cn } from "@/lib/utils";
-import { Server, Lock, Unlock, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Clock, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { Server, Lock, Unlock, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Clock, Zap, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
+import type { FeeSummary } from "@/lib/server/fee-tracker";
 
 
 interface MonitorStatus {
@@ -25,6 +26,7 @@ interface MonitorStatus {
   error: string | null;
   unlocked: Array<{ walletId: string; publicKey: string; expiresAt: number }>;
   settingsByWallet?: Array<{ walletId: string; publicKey: string; settings: import("@/lib/meteora/monitor").MonitorSettings; rpcUrl?: string }>;
+  feeStatsByWallet?: Record<string, FeeSummary>;
 }
 
 function useServerMonitor(pollInterval = 15_000) {
@@ -152,6 +154,8 @@ export function ServerMonitor() {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const isUnlocked = status?.unlocked.some(u => u.walletId === active?.id) ?? false;
+  const activePublicKey = status?.unlocked.find(u => u.walletId === active?.id)?.publicKey;
+  const feeStats = activePublicKey ? status?.feeStatsByWallet?.[activePublicKey] : undefined;
 
   // Sync position pools to server when the pool set actually changes.
   // Gate on stringified pool list — `positions` object identity flips on every
@@ -333,6 +337,30 @@ export function ServerMonitor() {
               )}
             </div>
 
+            {feeStats && (feeStats.totalEarnedUsd > 0 || feeStats.rebalanceCostUsd > 0) && (
+              <div className="border-t border-border px-4 py-3">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                  <TrendingUp className="w-3 h-3" />
+                  Fee Tracker
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Fees earned</span>
+                  <span className="text-right font-mono text-green-400">${feeStats.totalEarnedUsd.toFixed(2)}</span>
+                  <span className="text-muted-foreground pl-3 text-[11px]">Unclaimed</span>
+                  <span className="text-right font-mono text-muted-foreground text-[11px]">${feeStats.unclaimedUsd.toFixed(2)}</span>
+                  <span className="text-muted-foreground pl-3 text-[11px]">Claimed</span>
+                  <span className="text-right font-mono text-muted-foreground text-[11px]">${feeStats.claimedUsd.toFixed(2)}</span>
+                  <span className="text-muted-foreground">Rebalance cost</span>
+                  <span className="text-right font-mono text-red-400">${feeStats.rebalanceCostUsd.toFixed(2)}</span>
+                  <span className="text-muted-foreground font-medium">Net P&amp;L</span>
+                  <span className={cn("text-right font-mono font-medium", feeStats.netUsd >= 0 ? "text-green-400" : "text-red-400")}>
+                    {feeStats.netUsd >= 0 ? "+" : ""}${feeStats.netUsd.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground/50 mt-2">Since server start · resets on restart</p>
+              </div>
+            )}
+
             {(status?.history.length ?? 0) > 0 && (
               <div className="border-t border-border">
                 <button
@@ -358,6 +386,11 @@ export function ServerMonitor() {
                           <Badge className="text-xs border-0 bg-secondary text-muted-foreground h-4">
                             {r.reason.replace(/_/g, " ")}
                           </Badge>
+                          {r.txFeeLamports != null && (
+                            <span className="text-muted-foreground/60 font-mono text-[10px]">
+                              {(r.txFeeLamports / 1e9).toFixed(5)} SOL
+                            </span>
+                          )}
                           <span className="text-muted-foreground ml-auto">
                             {new Date(r.triggeredAt).toLocaleTimeString()}
                           </span>

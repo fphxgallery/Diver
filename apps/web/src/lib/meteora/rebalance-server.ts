@@ -57,7 +57,7 @@ async function signSendConfirm(
   instructions: TransactionInstruction[],
   priorityFee: number,
   unitLimit?: number
-): Promise<string> {
+): Promise<{ sig: string; feeLamports: number }> {
   const budget: TransactionInstruction[] = [];
   if (unitLimit && !hasComputeBudgetIx(instructions, 2)) budget.push(ComputeBudgetProgram.setComputeUnitLimit({ units: unitLimit }));
   if (!hasComputeBudgetIx(instructions, 3)) budget.push(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee }));
@@ -72,7 +72,14 @@ async function signSendConfirm(
   tx.sign([keypair]);
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
   await confirmByPolling(connection, sig, lastValidBlockHeight);
-  return sig;
+
+  let feeLamports = 5000;
+  try {
+    const info = await connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+    feeLamports = info?.meta?.fee ?? feeLamports;
+  } catch { /* non-critical */ }
+
+  return { sig, feeLamports };
 }
 
 export async function executeRebalanceWithKeypair(params: {
@@ -88,7 +95,7 @@ export async function executeRebalanceWithKeypair(params: {
   jupiterApiKey?: string;
   cluster?: Cluster;
   rpcUrl?: string;
-}): Promise<string[]> {
+}): Promise<{ sigs: string[]; totalFeeLamports: number }> {
   const s: RebalanceSettings = { ...DEFAULTS, ...params.settings };
   const cluster = params.cluster ?? "mainnet-beta";
   const connection = params.rpcUrl
@@ -115,8 +122,11 @@ export async function executeRebalanceWithKeypair(params: {
 
   const priorityFee = await getPriorityFeeMicroLamports(connection);
 
+  let totalFeeLamports = 0;
+
   if (ataInstructions.length > 0) {
-    await signSendConfirm(connection, params.keypair, ataInstructions, priorityFee, 100_000);
+    const r = await signSendConfirm(connection, params.keypair, ataInstructions, priorityFee, 100_000);
+    totalFeeLamports += r.feeLamports;
   }
 
   const decimalsX = pool.tokenX.mint.decimals;
@@ -232,7 +242,8 @@ export async function executeRebalanceWithKeypair(params: {
     const ixs = [reAtaX.ix, reAtaY.ix].filter((ix): ix is TransactionInstruction => ix !== undefined);
     if (ixs.length > 0) {
       addLog("info", "rebalance.ata", `Re-creating ${ixs.length} ATA(s) before rebalance build`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
-      await signSendConfirm(connection, params.keypair, ixs, priorityFee, 100_000);
+      const r = await signSendConfirm(connection, params.keypair, ixs, priorityFee, 100_000);
+      totalFeeLamports += r.feeLamports;
     }
   }
 
@@ -248,6 +259,8 @@ export async function executeRebalanceWithKeypair(params: {
   // The SDK may wrap/re-throw the simulation failure as a plain Error, so the
   // "insufficient funds" / Custom:1 markers can live in the message, the stack, a
   // `.logs` array, or only in the serialized error. Check all of them.
+  // Note: use "insufficient" (not "insufficient funds") — some SDK paths log
+  // "InsufficientFunds" (camelCase, no space) which toLowerCase gives "insufficientfunds".
   async function isInsufficientFunds(e: unknown): Promise<boolean> {
     let text = e instanceof Error ? `${e.name}: ${e.message}\n${e.stack ?? ""}` : String(e);
     if (e instanceof SendTransactionError) {
@@ -257,10 +270,12 @@ export async function executeRebalanceWithKeypair(params: {
     try {
       const anyE = e as Record<string, unknown>;
       if (Array.isArray(anyE.logs)) text += "\n" + (anyE.logs as unknown[]).join("\n");
+      // Also walk e.cause in case the SDK chains errors (Node 18+ Error.cause).
+      if (anyE.cause != null) text += "\n" + JSON.stringify(anyE.cause);
       text += "\n" + JSON.stringify(e, Object.getOwnPropertyNames(e as object));
     } catch { /* ignore unstringifiable errors */ }
     const lower = text.toLowerCase();
-    return lower.includes("insufficient funds") || lower.includes('"custom":1') || lower.includes("custom program error: 0x1");
+    return lower.includes("insufficient") || lower.includes('"custom":1') || lower.includes("custom program error: 0x1");
   }
 
   let built: { initBinArrayInstructions: TransactionInstruction[]; rebalancePositionInstruction: TransactionInstruction[] } | undefined;
@@ -270,7 +285,7 @@ export async function executeRebalanceWithKeypair(params: {
     // Reactive basket swap: only when the rebalance can't fund itself. Swap from the
     // basket to acquire the deficit token, re-derive the top-up, and retry once.
     const insufficient = await isInsufficientFunds(e);
-    addLog("info", "rebalance.debug", `catch: insufficient=${insufficient} isErr=${e instanceof Error} isSendTx=${e instanceof SendTransactionError} basket=${params.basketSwapEnabled}/${params.basket?.length ?? 0} msgHead=${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
+    addLog("info", "rebalance.debug", `catch: insufficient=${insufficient} isErr=${e instanceof Error} isSendTx=${e instanceof SendTransactionError} basket=${params.basketSwapEnabled}/${params.basket?.length ?? 0} msg=${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
     if (insufficient && params.basketSwapEnabled && params.basket && params.basket.length > 0) {
       try {
         const w = await readWalletRaw();
@@ -303,12 +318,16 @@ export async function executeRebalanceWithKeypair(params: {
   const { initBinArrayInstructions, rebalancePositionInstruction } = built;
 
   // Send inline, each with its own fresh blockhash + priority fee, and confirm before
-  // moving on. Returns landed signatures.
+  // moving on. Returns landed signatures and total on-chain fees paid.
   const sigs: string[] = [];
   if (initBinArrayInstructions.length > 0) {
-    sigs.push(await signSendConfirm(connection, params.keypair, initBinArrayInstructions, priorityFee, 400_000));
+    const r = await signSendConfirm(connection, params.keypair, initBinArrayInstructions, priorityFee, 400_000);
+    sigs.push(r.sig);
+    totalFeeLamports += r.feeLamports;
   }
-  sigs.push(await signSendConfirm(connection, params.keypair, rebalancePositionInstruction, priorityFee, 800_000));
+  const r = await signSendConfirm(connection, params.keypair, rebalancePositionInstruction, priorityFee, 800_000);
+  sigs.push(r.sig);
+  totalFeeLamports += r.feeLamports;
 
-  return sigs;
+  return { sigs, totalFeeLamports };
 }

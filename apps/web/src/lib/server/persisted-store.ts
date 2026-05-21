@@ -63,10 +63,12 @@ async function writeFileAtomic(file: PersistedFile): Promise<void> {
 }
 
 // Serialize all read-modify-write operations to avoid clobbering.
-let writeChain: Promise<unknown> = Promise.resolve();
+// Pinned to globalThis so Turbopack bundle duplication doesn't create a second chain.
+const g = globalThis as unknown as { __diverPersistChain?: Promise<unknown> };
+g.__diverPersistChain ??= Promise.resolve();
 function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
-  const next = writeChain.then(fn, fn);
-  writeChain = next.catch(() => {});
+  const next = (g.__diverPersistChain as Promise<unknown>).then(fn, fn);
+  g.__diverPersistChain = next.catch(() => {});
   return next;
 }
 

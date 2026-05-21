@@ -3,6 +3,7 @@ import { checkPin } from "@/lib/server/auth";
 import { listUnlocked, updatePools, updateSettings, updateRpc } from "@/lib/server/key-store";
 import { getState, triggerCheckNow } from "@/lib/server/monitor-job";
 import { getAll } from "@/lib/server/key-store";
+import { getFeeSummary } from "@/lib/server/fee-tracker";
 import type { MonitorSettings } from "@/lib/meteora/monitor";
 
 export const runtime = "nodejs";
@@ -13,16 +14,21 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const unlocked = listUnlocked();
-  const settingsByWallet = getAll().map(e => ({
+  const allEntries = getAll();
+  const settingsByWallet = allEntries.map(e => ({
     walletId: unlocked.find(u => u.publicKey === e.publicKey)?.walletId ?? "",
     publicKey: e.publicKey,
     settings: e.settings,
     rpcUrl: e.rpcUrl,
   }));
+  const feeStatsByWallet = Object.fromEntries(
+    allEntries.map(e => [e.publicKey, getFeeSummary(e.publicKey)])
+  );
   return NextResponse.json({
     ...getState(),
     unlocked,
     settingsByWallet,
+    feeStatsByWallet,
   });
 }
 

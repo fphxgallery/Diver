@@ -32,6 +32,7 @@ export interface RebalanceRecord {
   triggeredAt: number;
   reason: "out_of_range" | "edge_proximity" | "manual";
   txSigs: string[];
+  txFeeLamports?: number;
   success: boolean;
   error?: string;
 }

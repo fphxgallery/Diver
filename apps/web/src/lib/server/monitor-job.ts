@@ -5,6 +5,7 @@ import { executeRebalanceWithKeypair } from "@/lib/meteora/rebalance-server";
 import { addLog } from "./server-log";
 import { getWalletHoldings, fetchPrices, type Holding } from "./portfolio-value";
 import { recordValueSnapshot } from "./value-history-store";
+import { recordFeeTick, addRebalanceCost, updateFeeUsd } from "./fee-tracker";
 import type { PositionHealth, RebalanceRecord } from "@/lib/meteora/monitor";
 
 export interface ServerMonitorState {
@@ -84,6 +85,7 @@ async function runCheck() {
                 tokenYDecimals,
               });
               newHealth.push(h);
+              recordFeeTick(entry.publicKey, pos.publicKey, h.feeX, h.feeY, tokenXMint, tokenYMint, tokenXDecimals, tokenYDecimals);
 
               const reason = shouldAutoRebalance(h, entry.settings);
               if (!reason) continue;
@@ -100,9 +102,10 @@ async function runCheck() {
               const txSigs: string[] = [];
               let success = false;
               let error: string | undefined;
+              let txFeeLamports: number | undefined;
 
               try {
-                const sigs = await executeRebalanceWithKeypair({
+                const { sigs, totalFeeLamports } = await executeRebalanceWithKeypair({
                   poolAddress: poolAddr,
                   positionKey: pos.publicKey,
                   keypair: entry.keypair,
@@ -119,9 +122,11 @@ async function runCheck() {
                   },
                 });
                 txSigs.push(...sigs);
+                txFeeLamports = totalFeeLamports;
+                addRebalanceCost(entry.publicKey, totalFeeLamports);
                 success = true;
                 h.autoRebalanceTriggered = true;
-                addLog("info", "rebalance.success", `Rebalance succeeded — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${txSigs.length} tx)`, { txs: txSigs.length, pool: poolAddr });
+                addLog("info", "rebalance.success", `Rebalance succeeded — ${entry.pairNames[poolAddr] ?? poolAddr.slice(0, 8)} (${txSigs.length} tx, fee ${totalFeeLamports} lam)`, { txs: txSigs.length, pool: poolAddr });
               } catch (e) {
                 error = e instanceof Error ? e.message : "Rebalance failed";
                 const lower = error.toLowerCase();
@@ -152,6 +157,7 @@ async function runCheck() {
                 triggeredAt: Date.now(),
                 reason: reason as "out_of_range" | "edge_proximity" | "manual",
                 txSigs,
+                txFeeLamports,
                 success,
                 error,
               };
@@ -172,6 +178,7 @@ async function runCheck() {
         const walletUsd = holdings.reduce((s, h) => s + h.amount * (prices[h.mint] ?? 0), 0);
         const positionsUsd = positionContribs.reduce((s, c) => s + c.amount * (prices[c.mint] ?? 0), 0);
         await recordValueSnapshot(entry.publicKey, walletUsd + positionsUsd);
+        updateFeeUsd(entry.publicKey, prices);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         addLog("warn", "value.snapshot.error", `Value snapshot failed — ${entry.publicKey.slice(0, 8)}: ${msg}`, { wallet: entry.publicKey.slice(0, 8) });
