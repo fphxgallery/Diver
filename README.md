@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.7
+- **Basket-swap diagnostics.** `acquireDeficitToken` previously returned silently (no log) for the common no-op cases, so a rebalance could skip with no explanation for why the basket swap never ran. It now logs a reason for every outcome: `rebalance.swap.try` (about to swap, with USD size), `rebalance.swap.skip` with the specific reason (no reserve tokens besides the deficit / no price / **wallet holds none of the basket reserve tokens — free balance ~0** / swap size too small), `rebalance.swap` (success), `rebalance.swap.fail` (Jupiter error). Makes "I never see a basket swap" diagnosable from Server Logs.
+
 ### v1.3.6
 - **Add `.dockerignore` — fixes stale deploys.** The Dockerfile does `COPY . .`, and with no `.dockerignore` the host's `apps/web/.next` build output was copied into the image; `next build` then reused that cache and produced a bundle mixing freshly-compiled and stale (cached) modules. Net effect: version bumps appeared to deploy while actual code (e.g. the rebalance logic) stayed several versions behind, even with `--build`/`--no-cache`. The `.dockerignore` now excludes `.next`, `node_modules`, `.git`, and secrets so every build compiles from clean source.
 

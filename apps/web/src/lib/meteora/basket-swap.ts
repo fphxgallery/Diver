@@ -28,12 +28,15 @@ export async function acquireDeficitToken(params: {
   maxPctOfPosition: number;
   apiKey: string;
 }): Promise<{ signature: string; source: string; outAmount: string } | null> {
+  const deficit = params.deficitMint.slice(0, 8);
+  const skip = (reason: string) => addLog("warn", "rebalance.swap.skip", `Basket swap not done (deficit ${deficit}…): ${reason}`, { deficit });
+
   const candidates = params.basket.filter(b => b.mint !== params.deficitMint);
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) { skip("basket has no tokens besides the deficit token"); return null; }
 
   const prices = await fetchPrices([params.deficitMint, ...candidates.map(b => b.mint)]);
   const pDef = prices[params.deficitMint];
-  if (!pDef) return null; // can't value the swap safely
+  if (!pDef) { skip("no USD price for deficit token (can't size swap)"); return null; }
 
   const holdings = await getWalletHoldings(params.owner, params.rpcUrl);
   const balByMint = new Map(holdings.map(h => [h.mint, h.amount]));
@@ -48,7 +51,7 @@ export async function acquireDeficitToken(params: {
     if (uiBal <= 0) continue;
     funded.push({ ...b, price, uiBal, valueUsd: uiBal * price });
   }
-  if (funded.length === 0) return null;
+  if (funded.length === 0) { skip("wallet holds none of the basket reserve tokens (free balance ~0 — funds likely locked in positions)"); return null; }
 
   // Pick the source most over its target weight, so swapping also restores basket balance.
   const totalBasketVal = funded.reduce((s, f) => s + f.valueUsd, 0);
@@ -65,10 +68,12 @@ export async function acquireDeficitToken(params: {
     ? params.positionValueUsd * (params.maxPctOfPosition / 100)
     : shortfallUsd;
   const swapUsd = Math.min(shortfallUsd, capUsd, source.valueUsd);
-  if (swapUsd < 0.01) return null;
+  if (swapUsd < 0.01) { skip(`computed swap size $${swapUsd.toFixed(4)} too small (shortfall $${shortfallUsd.toFixed(2)}, source ${source.symbol} $${source.valueUsd.toFixed(2)}, cap $${capUsd.toFixed(2)})`); return null; }
 
   const inputRaw = Math.floor((swapUsd / source.price) * 10 ** source.decimals);
-  if (inputRaw <= 0) return null;
+  if (inputRaw <= 0) { skip("input amount rounds to 0"); return null; }
+
+  addLog("info", "rebalance.swap.try", `Basket swap ${source.symbol} → deficit ${deficit}… ($${swapUsd.toFixed(2)})`, { source: source.symbol, deficit, usd: Number(swapUsd.toFixed(2)) });
 
   // Market floor: fair deficit out at mid price, minus the allowed impact. Guards the fill
   // without relying on Jupiter's unreliable priceImpact field.
