@@ -35,8 +35,14 @@ export async function GET(req: NextRequest) {
       headers: { "x-api-key": apiKey },
       cache: "no-store",
     });
-    const body = await upstream.json();
-    return NextResponse.json(body, { status: upstream.status });
+    const text = await upstream.text();
+    try {
+      const body = JSON.parse(text);
+      return NextResponse.json(body, { status: upstream.status });
+    } catch {
+      console.error(`[diver] lpagent non-JSON response — status=${upstream.status} url=${url} body=${text.slice(0, 300)}`);
+      return NextResponse.json({ error: `LP Agent returned non-JSON (${upstream.status})`, preview: text.slice(0, 200) }, { status: 502 });
+    }
   } catch (e) {
     const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     console.error(`[diver] lpagent proxy failed — url=${url} error=${msg}`);
