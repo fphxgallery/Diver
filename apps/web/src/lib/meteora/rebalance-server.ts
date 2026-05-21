@@ -270,6 +270,7 @@ export async function executeRebalanceWithKeypair(params: {
     // Reactive basket swap: only when the rebalance can't fund itself. Swap from the
     // basket to acquire the deficit token, re-derive the top-up, and retry once.
     const insufficient = await isInsufficientFunds(e);
+    addLog("info", "rebalance.debug", `catch: insufficient=${insufficient} isErr=${e instanceof Error} isSendTx=${e instanceof SendTransactionError} basket=${params.basketSwapEnabled}/${params.basket?.length ?? 0} msgHead=${(e instanceof Error ? e.message : String(e)).slice(0, 140)}`, { pool: params.poolAddress, position: params.positionKey.slice(0, 8) });
     if (insufficient && params.basketSwapEnabled && params.basket && params.basket.length > 0) {
       try {
         const w = await readWalletRaw();

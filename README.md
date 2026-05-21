@@ -102,6 +102,9 @@ See [`deploy/`](deploy/) for the service file, nginx config, and update script.
 
 ## Changelog
 
+### v1.3.10
+- **Debug log in the rebalance catch.** Temporary `rebalance.debug` entry logging whether the failure was detected as insufficient-funds, the error type, basket state, and the message head — to diagnose why the reactive basket swap isn't engaging despite an insufficient-funds failure.
+
 ### v1.3.9
 - **Force clean build dir in Docker.** Dockerfile now runs `rm -rf apps/web/.next` immediately before `next build`, so a stale `.next` (from cache or a copied build dir) can never produce a split, mixed-version bundle. Belt-and-suspenders with the v1.3.6 `.dockerignore`.
 
